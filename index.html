@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mason's Operations Tracker</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#0A0C12;color:#F0F0F0;font-family:'Outfit',sans-serif;}
+  ::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-thumb{background:#1e2335;border-radius:99px;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .bh:hover{opacity:0.75!important;}
+  textarea::placeholder{color:rgba(255,255,255,0.18);}
+  select option{background:#111420;}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ── CONFIG ──
+const GAPI_CLIENT_ID = "542104837592-apuhqsr50hk7obc3d1idhht1s2hc1a81.apps.googleusercontent.com";
+const GAPI_SCOPE = "https://www.googleapis.com/auth/drive.file";
+
+// ── STORAGE (localStorage for standalone) ──
+const store = {
+  get: (key) => { try { return localStorage.getItem(key); } catch { return null; } },
+  set: (key, val) => { try { localStorage.setItem(key, val); } catch {} },
+};
+
+// ── CONSTANTS ──
+const CATEGORY_META = {
+  census:    { label:"Census",    color:"#60A5FA", bg:"#1E3A5F" },
+  kipu:      { label:"Kipu",      color:"#A78BFA", bg:"#2D1B69" },
+  zoho:      { label:"Zoho",      color:"#FCD34D", bg:"#451A03" },
+  team:      { label:"Team",      color:"#34D399", bg:"#064E3B" },
+  scheduler: { label:"Scheduler", color:"#F472B6", bg:"#500724" },
+  insurance: { label:"Insurance", color:"#22D3EE", bg:"#0C4A6E" },
+  intake:    { label:"Intake",    color:"#FB923C", bg:"#431407" },
+  meeting:   { label:"Meeting",   color:"#BEF264", bg:"#1A2E05" },
+  audit:     { label:"Audit",     color:"#E879F9", bg:"#3B0764" },
+};
+const FREQ_OPTIONS = [
+  { value:"daily",  label:"Every day (Mon–Fri)" },
+  { value:"mon",    label:"Monday only" },
+  { value:"tue",    label:"Tuesday only" },
+  { value:"wed",    label:"Wednesday only" },
+  { value:"thu",    label:"Thursday only" },
+  { value:"fri",    label:"Friday only" },
+  { value:"mwf",    label:"Mon / Wed / Fri" },
+  { value:"tth",    label:"Tue / Thu" },
+  { value:"custom", label:"Custom days…" },
+];
+const FREQ_DAYS = {
+  daily:["Mon","Tue","Wed","Thu","Fri"],
+  mon:["Mon"],tue:["Tue"],wed:["Wed"],thu:["Thu"],fri:["Fri"],
+  mwf:["Mon","Wed","Fri"],tth:["Tue","Thu"],
+};
+const DAYS = ["Mon","Tue","Wed","Thu","Fri"];
+const DAY_FULL = { Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday" };
+
+function task(id,time,label,category,freq="daily"){ return {id,time,label,category,freq}; }
+
+const DEFAULT_TIME_SLOTS = [
+  "8:00 – 8:30 AM","9:00 – 9:30 AM","9:30 – 11:30 AM","10:30 – 11:30 AM",
+  "11:30 AM – 12:00 PM","12:00 – 2:30 PM","12:00 – 4:00 PM","1:00 – 4:00 PM",
+  "2:30 – 5:00 PM","4:00 – 4:30 PM","5:00 – 5:30 PM","9:00 – 10:30 AM","11:30 AM – 1:00 PM",
+];
+const DEFAULT_TASKS = [
+  task("m1","8:00 – 8:30 AM","Census Review","census","daily"),
+  task("m2","8:00 – 8:30 AM","Facility Tracker","census","daily"),
+  task("m3","8:00 – 8:30 AM","Bed Availability","team","daily"),
+  task("m4","8:00 – 8:30 AM","Team Schedule","team","daily"),
+  task("m5","9:00 – 9:30 AM","Zoho Records","zoho","daily"),
+  task("m6","9:00 – 9:30 AM","Assessment Sched","scheduler","daily"),
+  task("m7","9:30 – 11:30 AM","Kipu Chart Review","kipu","mon"),
+  task("m8","11:30 AM – 12:00 PM","Census Review","census","daily"),
+  task("m9","11:30 AM – 12:00 PM","Facility Tracker","census","daily"),
+  task("m10","12:00 – 2:30 PM","Team Availability","team","mon"),
+  task("m11","2:30 – 5:00 PM","Adolescent Intake?","intake","mon"),
+  task("m12","5:00 – 5:30 PM","Census Review","census","daily"),
+  task("m13","5:00 – 5:30 PM","Facility Tracker","census","daily"),
+  task("t1","9:30 – 11:30 AM","PHX Scheduler","scheduler","tth"),
+  task("t2","9:30 – 11:30 AM","Kipu Scheduler","kipu","tth"),
+  task("t3","12:00 – 2:30 PM","Team Availability","team","tue"),
+  task("t4","2:30 – 5:00 PM","Adolescent Intake?","intake","tue"),
+  task("w1","9:00 – 9:30 AM","Insurance Verify","insurance","wed"),
+  task("w2","9:30 – 11:30 AM","Kipu Chart Review","kipu","wed"),
+  task("w3","12:00 – 4:00 PM","Team Availability","team","wed"),
+  task("w4","4:00 – 4:30 PM","Census Review","census","wed"),
+  task("w5","4:00 – 4:30 PM","Facility Tracker","census","wed"),
+  task("th1","9:30 – 11:30 AM","PHX Scheduler","scheduler","tth"),
+  task("th2","9:30 – 11:30 AM","Kipu Scheduler","kipu","tth"),
+  task("th3","12:00 – 4:00 PM","Team Availability","team","thu"),
+  task("th4","4:00 – 4:30 PM","Census Review","census","thu"),
+  task("th5","4:00 – 4:30 PM","Facility Tracker","census","thu"),
+  task("f1","9:00 – 10:30 AM","Zoho Audit","audit","fri"),
+  task("f2","9:00 – 10:30 AM","Assess Sched Audit","audit","fri"),
+  task("f3","10:30 – 11:30 AM","Kipu Chart Review","kipu","fri"),
+  task("f4","10:30 – 11:30 AM","Match Census/Facility/Kipu","kipu","fri"),
+  task("f5","11:30 AM – 1:00 PM","Meeting Prep","meeting","fri"),
+  task("f6","11:30 AM – 1:00 PM","Team Meeting","meeting","fri"),
+  task("f7","1:00 – 4:00 PM","Team Availability","team","fri"),
+  task("f8","4:00 – 4:30 PM","Census Review","census","fri"),
+  task("f9","4:00 – 4:30 PM","Facility Tracker","census","fri"),
+];
+
+function taskAppearsOnDay(t,day){
+  if(t.freq==="custom") return (t.customDays||[]).includes(day);
+  return (FREQ_DAYS[t.freq]||DAYS).includes(day);
+}
+function extractStartTime(slotStr){
+  if(!slotStr) return slotStr;
+  const dash=slotStr.indexOf("–");
+  if(dash===-1) return slotStr.trim();
+  const left=slotStr.slice(0,dash).trim();
+  const right=slotStr.slice(dash+1).trim();
+  if(!/[aApP][mM]/.test(left)){
+    const ampm=right.match(/[aApP][mM]/)?.[0]||"";
+    const lh=parseInt(left.split(":")[0]), rh=parseInt(right.split(":")[0]);
+    if(ampm==="PM"&&lh!==12&&(rh===12||lh>rh)) return left+" AM";
+    return left+" "+ampm;
+  }
+  return left;
+}
+function generateWeeks(){
+  const weeks=[];
+  let cursor=new Date(2026,3,19);
+  const end=new Date(2026,5,30);
+  while(cursor<=end){
+    const mon=new Date(cursor); mon.setDate(mon.getDate()+1);
+    const fri=new Date(cursor); fri.setDate(fri.getDate()+5);
+    const fmt=d=>d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+    weeks.push({label:`${fmt(mon)} – ${fmt(fri)}`,startSunday:new Date(cursor),mon:new Date(mon)});
+    cursor.setDate(cursor.getDate()+7);
+  }
+  return weeks;
+}
+const ALL_WEEKS=generateWeeks();
+function getTodayDayName(){ return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date().getDay()]; }
+function getCurrentWeekIdx(){
+  const now=new Date();
+  for(let i=ALL_WEEKS.length-1;i>=0;i--){
+    const sun=ALL_WEEKS[i].startSunday, sat=new Date(sun); sat.setDate(sat.getDate()+6);
+    if(now>=sun&&now<=sat) return i;
+  }
+  return 0;
+}
+
+const TASKS_KEY="mase_v3_tasks", SLOTS_KEY="mase_v3_slots", DRIVE_KEY="mase_v3_drive_folder";
+function overrideKey(wi,d){ return `mase_v3_override_w${wi}_${d}`; }
+function checkedKey(wi,d){ return `mase_v3_w${wi}_${d}`; }
+function notesKey(wi,d){ return `mase_v3_notes_w${wi}_${d}`; }
+function uid(){ return "t_"+Math.random().toString(36).slice(2,9); }
+
+function buildDayTasks(allTasks,day,override){
+  const base=allTasks.filter(t=>taskAppearsOnDay(t,day));
+  const removed=new Set(override?.removed||[]);
+  const slotOverrides=override?.slotOverrides||{};
+  const result=base.filter(t=>!removed.has(t.id)).map(t=>slotOverrides[t.id]?{...t,time:slotOverrides[t.id]}:t);
+  return [...result,...(override?.added||[])];
+}
+
+function buildCSV(weekIdx,day,tasks,checkedSet,notes){
+  const week=ALL_WEEKS[weekIdx];
+  const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
+  const dateStr=dayDate.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+  const q=v=>`"${String(v).replace(/"/g,'""')}"`;
+  const done=tasks.filter(t=>checkedSet.has(t.id)).length;
+  const rows=[
+    [q("Day"),q(DAY_FULL[day])].join(","),
+    [q("Date"),q(dateStr)].join(","),
+    [q("Week of"),q(week.label)].join(","),
+    [q("Completion"),q(`${done} of ${tasks.length} (${Math.round(done/tasks.length*100)}%)`)].join(","),
+    ",",
+    [q("Start Time"),q("Task"),q("Completed")].join(","),
+  ];
+  const seen={},groups=[];
+  tasks.forEach(t=>{if(!seen[t.time]){seen[t.time]=true;groups.push(t.time);}});
+  groups.forEach(time=>{
+    const start=extractStartTime(time);
+    tasks.filter(t=>t.time===time).forEach((t,i)=>{
+      rows.push([i===0?q(start):q(""),q(t.label),q(checkedSet.has(t.id)?"TRUE":"FALSE")].join(","));
+    });
+  });
+  if(notes?.trim()) rows.push(",", [q("Notes"),q(notes.trim()),q("")].join(","));
+  return rows.join("\r\n");
+}
+function buildTxt(weekIdx,day,tasks,checkedSet,notes){
+  const week=ALL_WEEKS[weekIdx];
+  const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
+  const dateStr=dayDate.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+  const done=tasks.filter(t=>checkedSet.has(t.id)).length;
+  const pct=Math.round(done/tasks.length*100);
+  const HR="─".repeat(52);
+  const seen={},groups=[];
+  tasks.forEach(t=>{if(!seen[t.time]){seen[t.time]=true;groups.push(t.time);}});
+  const lines=["CORNERSTONE HEALING CENTER — PHOENIX OUTPATIENT","IAR Lead · Daily Summary",HR,
+    `Date:         ${dateStr}`,`Week:         ${week.label}`,
+    `Completion:   ${done} of ${tasks.length} tasks  (${pct}%)`,
+    `Exported:     ${new Date().toLocaleString("en-US")}`,HR,""];
+  groups.forEach(time=>{
+    lines.push(`  ${time}`);
+    tasks.filter(t=>t.time===time).forEach(t=>lines.push(`    [${checkedSet.has(t.id)?"✓":" "}]  ${t.label}`));
+    lines.push("");
+  });
+  if(notes?.trim()) lines.push(HR,"NOTES","",notes.trim(),"");
+  lines.push(HR,"Generated by Mason's Operations Tracker");
+  return lines.join("\n");
+}
+
+// ── GOOGLE DRIVE ──
+async function getGoogleToken(){
+  return new Promise((resolve,reject)=>{
+    if(!window.google?.accounts?.oauth2){reject(new Error("Google sign-in library not loaded yet. Wait a moment and try again."));return;}
+    const client=window.google.accounts.oauth2.initTokenClient({
+      client_id:GAPI_CLIENT_ID, scope:GAPI_SCOPE,
+      callback:(resp)=>resp.error?reject(new Error(resp.error)):resolve(resp.access_token),
+    });
+    client.requestAccessToken({prompt:""});
+  });
+}
+async function uploadToDrive(content,filename,mime,folderId,token){
+  const meta={name:filename,...(folderId?{parents:[folderId]}:{})};
+  const boundary="boundary_mase_export";
+  const body=[`--${boundary}`,"Content-Type: application/json; charset=UTF-8","",
+    JSON.stringify(meta),"",`--${boundary}`,`Content-Type: ${mime}`,"",content,"",`--${boundary}--`].join("\r\n");
+  const resp=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":`multipart/related; boundary=${boundary}`},body});
+  if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||"Upload failed");}
+  return resp.json();
+}
+
+// ── PRIMITIVES ──
+function ProgressBar({pct,color="#60A5FA",height=5}){
+  return <div style={{width:"100%",height,borderRadius:99,background:"rgba(255,255,255,0.07)",overflow:"hidden"}}>
+    <div style={{width:`${pct}%`,height:"100%",background:pct===100?"linear-gradient(90deg,#059669,#34D399)":`linear-gradient(90deg,${color}bb,${color})`,borderRadius:99,transition:"width 0.5s"}}/>
+  </div>;
+}
+function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label}){
+  const r=(size-stroke)/2,circ=2*Math.PI*r;
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={pct===100?"#34D399":color} strokeWidth={stroke}
+        strokeDasharray={circ} strokeDashoffset={circ*(1-pct/100)} strokeLinecap="round"
+        transform={`rotate(-90 ${size/2} ${size/2})`} style={{transition:"stroke-dashoffset 0.6s"}}/>
+      <text x={size/2} y={size/2+5} textAnchor="middle" fill={pct===100?"#34D399":"#F0F0F0"}
+        fontSize="13" fontFamily="Outfit" fontWeight="700">{pct}%</text>
+    </svg>
+    {label&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em"}}>{label}</div>}
+  </div>;
+}
+
+function Modal({title,subtitle,onClose,children,maxWidth=500}){
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:20}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"#111420",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 40px 100px rgba(0,0,0,0.7)"}}>
+      <div style={{padding:"20px 22px 14px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          {subtitle&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#60A5FA",letterSpacing:"0.12em",marginBottom:5}}>{subtitle}</div>}
+          <div style={{fontFamily:"Outfit",fontWeight:800,fontSize:20,color:"#F0F0F0"}}>{title}</div>
+        </div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,width:30,height:30,cursor:"pointer",color:"rgba(255,255,255,0.4)",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+      </div>
+      <div style={{padding:"16px 22px 22px"}}>{children}</div>
+    </div>
+  </div>;
+}
+function FormRow({label,children}){
+  return <div style={{marginBottom:14}}>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",marginBottom:6}}>{label}</div>
+    {children}
+  </div>;
+}
+const IS={width:"100%",padding:"9px 12px",borderRadius:9,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#EFEFEF",fontFamily:"Outfit",fontSize:13.5,outline:"none",boxSizing:"border-box"};
+
+function TaskModal({editTask,allSlots,onSave,onDelete,onClose}){
+  const isNew=!editTask;
+  const [label,setLabel]=useState(editTask?.label||"");
+  const [category,setCategory]=useState(editTask?.category||"census");
+  const [time,setTime]=useState(editTask?.time||allSlots[0]||"");
+  const [freq,setFreq]=useState(editTask?.freq||"daily");
+  const [customDays,setCustomDays]=useState(editTask?.customDays||[]);
+  const [customSlot,setCustomSlot]=useState("");
+  const [showCS,setShowCS]=useState(false);
+  const handleSave=()=>{
+    if(!label.trim()) return;
+    const ft=showCS&&customSlot.trim()?customSlot.trim():time;
+    onSave({...editTask,id:editTask?.id||uid(),label:label.trim(),category,time:ft,freq,customDays});
+  };
+  const toggleDay=d=>setCustomDays(p=>p.includes(d)?p.filter(x=>x!==d):[...p,d]);
+  return <Modal title={isNew?"Add repeating task":"Edit repeating task"} subtitle={isNew?"NEW TASK":"EDIT TASK"} onClose={onClose} maxWidth={460}>
+    <FormRow label="TASK NAME"><input style={IS} value={label} onChange={e=>setLabel(e.target.value)} placeholder="e.g. Kipu Chart Review" autoFocus/></FormRow>
+    <FormRow label="CATEGORY">
+      <select style={IS} value={category} onChange={e=>setCategory(e.target.value)}>
+        {Object.entries(CATEGORY_META).map(([k,m])=><option key={k} value={k}>{m.label}</option>)}
+      </select>
+    </FormRow>
+    <FormRow label="TIME SLOT">
+      <select style={IS} value={showCS?"custom":time} onChange={e=>{if(e.target.value==="custom"){setShowCS(true);}else{setShowCS(false);setTime(e.target.value);}}}>
+        {allSlots.map(s=><option key={s} value={s}>{s}</option>)}
+        <option value="custom">+ New time slot…</option>
+      </select>
+      {showCS&&<input style={{...IS,marginTop:8}} value={customSlot} onChange={e=>setCustomSlot(e.target.value)} placeholder="e.g. 3:00 – 3:30 PM"/>}
+    </FormRow>
+    <FormRow label="FREQUENCY">
+      <select style={IS} value={freq} onChange={e=>setFreq(e.target.value)}>
+        {FREQ_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      {freq==="custom"&&<div style={{display:"flex",gap:6,marginTop:9}}>
+        {DAYS.map(d=><button key={d} onClick={()=>toggleDay(d)} style={{flex:1,padding:"6px 4px",borderRadius:7,cursor:"pointer",border:`1px solid ${customDays.includes(d)?"#60A5FA":"rgba(255,255,255,0.1)"}`,background:customDays.includes(d)?"rgba(96,165,250,0.15)":"rgba(255,255,255,0.03)",color:customDays.includes(d)?"#93C5FD":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:12}}>{d}</button>)}
+      </div>}
+    </FormRow>
+    <div style={{display:"flex",gap:9,marginTop:6}}>
+      {!isNew&&<button onClick={()=>onDelete(editTask.id)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Delete</button>}
+      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
+      <button onClick={handleSave} disabled={!label.trim()} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:label.trim()?"pointer":"not-allowed",border:"none",background:label.trim()?"linear-gradient(135deg,#1D4ED8,#3B82F6)":"rgba(255,255,255,0.05)",color:label.trim()?"#fff":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>{isNew?"Add Task":"Save Changes"}</button>
+    </div>
+  </Modal>;
+}
+
+function DayTaskModal({editTask,allSlots,day,onSave,onClose}){
+  const isNew=!editTask;
+  const [label,setLabel]=useState(editTask?.label||"");
+  const [category,setCategory]=useState(editTask?.category||"census");
+  const [time,setTime]=useState(editTask?.time||allSlots[0]||"");
+  const [customSlot,setCustomSlot]=useState("");
+  const [showCS,setShowCS]=useState(false);
+  const handleSave=()=>{
+    if(!label.trim()) return;
+    const ft=showCS&&customSlot.trim()?customSlot.trim():time;
+    onSave({...editTask,id:editTask?.id||uid(),label:label.trim(),category,time:ft,_dayOnly:true});
+  };
+  return <Modal title={isNew?`Add task — ${DAY_FULL[day]} only`:`Edit task — ${DAY_FULL[day]} only`} subtitle="DAY-SPECIFIC TASK" onClose={onClose} maxWidth={440}>
+    <div style={{padding:"8px 12px",borderRadius:9,background:"rgba(251,146,60,0.08)",border:"1px solid rgba(251,146,60,0.2)",marginBottom:14}}>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FB923C"}}>This task only applies to {DAY_FULL[day]} this week.</span>
+    </div>
+    <FormRow label="TASK NAME"><input style={IS} value={label} onChange={e=>setLabel(e.target.value)} placeholder="e.g. Coverage call" autoFocus/></FormRow>
+    <FormRow label="CATEGORY">
+      <select style={IS} value={category} onChange={e=>setCategory(e.target.value)}>
+        {Object.entries(CATEGORY_META).map(([k,m])=><option key={k} value={k}>{m.label}</option>)}
+      </select>
+    </FormRow>
+    <FormRow label="TIME SLOT">
+      <select style={IS} value={showCS?"custom":time} onChange={e=>{if(e.target.value==="custom"){setShowCS(true);}else{setShowCS(false);setTime(e.target.value);}}}>
+        {allSlots.map(s=><option key={s} value={s}>{s}</option>)}
+        <option value="custom">+ New time slot…</option>
+      </select>
+      {showCS&&<input style={{...IS,marginTop:8}} value={customSlot} onChange={e=>setCustomSlot(e.target.value)} placeholder="e.g. 3:00 – 3:30 PM"/>}
+    </FormRow>
+    <div style={{display:"flex",gap:9,marginTop:6}}>
+      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
+      <button onClick={handleSave} disabled={!label.trim()} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:label.trim()?"pointer":"not-allowed",border:"none",background:label.trim()?"linear-gradient(135deg,#d97706,#f59e0b)":"rgba(255,255,255,0.05)",color:label.trim()?"#fff":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>{isNew?"Add for Today":"Save"}</button>
+    </div>
+  </Modal>;
+}
+
+function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,onClose}){
+  const slotOverrides=override?.slotOverrides||{};
+  const currentSlot=slotOverrides[t.id]||t.time;
+  const [slot,setSlot]=useState(currentSlot);
+  const [customSlot,setCustomSlot]=useState("");
+  const [showC,setShowC]=useState(false);
+  const isRemoved=(override?.removed||[]).includes(t.id);
+  const handleSlotSave=()=>{
+    const fs=showC&&customSlot.trim()?customSlot.trim():slot;
+    onChangeSlot(t.id,fs);
+  };
+  return <Modal title={`Edit for ${DAY_FULL[t._day||"Mon"]} only`} subtitle="DAY OVERRIDE" onClose={onClose} maxWidth={420}>
+    <div style={{padding:"8px 12px",borderRadius:9,background:"rgba(251,146,60,0.08)",border:"1px solid rgba(251,146,60,0.2)",marginBottom:14}}>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FB923C"}}>Changes here only affect this day. The repeating schedule stays unchanged.</span>
+    </div>
+    <div style={{padding:"10px 14px",borderRadius:9,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",marginBottom:14}}>
+      <div style={{fontFamily:"Outfit",fontWeight:600,fontSize:14,color:"#EFEFEF"}}>{t.label}</div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)",marginTop:3}}>Base slot: {t.time}</div>
+    </div>
+    <FormRow label="TIME SLOT FOR THIS DAY">
+      <select style={IS} value={showC?"custom":slot} onChange={e=>{if(e.target.value==="custom"){setShowC(true);}else{setShowC(false);setSlot(e.target.value);}}}>
+        {allSlots.map(s=><option key={s} value={s}>{s}</option>)}
+        <option value="custom">+ New time slot…</option>
+      </select>
+      {showC&&<input style={{...IS,marginTop:8}} value={customSlot} onChange={e=>setCustomSlot(e.target.value)} placeholder="e.g. 3:00 – 3:30 PM"/>}
+    </FormRow>
+    <div style={{display:"flex",gap:9,marginTop:6}}>
+      <button onClick={()=>onRemoveTask(t.id)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>{isRemoved?"Restore task":"Remove today"}</button>
+      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
+      <button onClick={handleSlotSave} style={{flex:1.4,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#d97706,#f59e0b)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save for Today</button>
+    </div>
+  </Modal>;
+}
+
+function SlotsModal({slots,onSave,onClose}){
+  const [list,setList]=useState([...slots]);
+  const [newSlot,setNewSlot]=useState("");
+  const [editIdx,setEditIdx]=useState(null);
+  const [editVal,setEditVal]=useState("");
+  const addSlot=()=>{ const v=newSlot.trim(); if(!v||list.includes(v)) return; setList(p=>[...p,v]); setNewSlot(""); };
+  const remove=i=>setList(p=>p.filter((_,j)=>j!==i));
+  const startEdit=i=>{setEditIdx(i);setEditVal(list[i]);};
+  const commitEdit=()=>{ const v=editVal.trim(); if(!v) return; setList(p=>p.map((s,i)=>i===editIdx?v:s)); setEditIdx(null); };
+  return <Modal title="Manage time slots" subtitle="TIME SLOTS" onClose={onClose} maxWidth={420}>
+    <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14,maxHeight:300,overflowY:"auto"}}>
+      {list.map((s,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:9,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)"}}>
+          {editIdx===i?<>
+            <input style={{...IS,flex:1,padding:"5px 9px"}} value={editVal} onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&commitEdit()} autoFocus/>
+            <button onClick={commitEdit} style={{padding:"4px 10px",borderRadius:7,background:"rgba(96,165,250,0.15)",border:"1px solid rgba(96,165,250,0.3)",color:"#93C5FD",cursor:"pointer",fontFamily:"Outfit",fontSize:12,fontWeight:600}}>Save</button>
+          </>:<>
+            <span style={{flex:1,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"rgba(255,255,255,0.6)"}}>{s}</span>
+            <button onClick={()=>startEdit(i)} style={{padding:"3px 9px",borderRadius:7,background:"transparent",border:"1px solid rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontFamily:"Outfit",fontSize:11}}>Edit</button>
+            <button onClick={()=>remove(i)} style={{padding:"3px 9px",borderRadius:7,background:"transparent",border:"1px solid rgba(239,68,68,0.2)",color:"#FCA5A5",cursor:"pointer",fontFamily:"Outfit",fontSize:11}}>×</button>
+          </>}
+        </div>
+      ))}
+    </div>
+    <div style={{display:"flex",gap:8}}>
+      <input style={{...IS,flex:1}} value={newSlot} onChange={e=>setNewSlot(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addSlot()} placeholder="e.g. 3:00 – 3:30 PM"/>
+      <button onClick={addSlot} style={{padding:"9px 14px",borderRadius:9,background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.25)",color:"#93C5FD",cursor:"pointer",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Add</button>
+    </div>
+    <div style={{display:"flex",gap:9,marginTop:14}}>
+      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
+      <button onClick={()=>onSave(list)} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#1D4ED8,#3B82F6)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save Slots</button>
+    </div>
+  </Modal>;
+}
+
+function DriveFolderModal({currentFolder,onSave,onClose}){
+  const [url,setUrl]=useState(currentFolder?.url||"");
+  const [name,setName]=useState(currentFolder?.name||"");
+  const extractFolderId=raw=>{const m=raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);return m?m[1]:null;};
+  const handleSave=()=>{
+    const tu=url.trim(), tn=name.trim()||"My Drive Folder";
+    if(!tu){onSave(null);return;}
+    onSave({url:tu,name:tn,folderId:extractFolderId(tu)});
+  };
+  return <Modal title="Google Drive export folder" subtitle="DRIVE SETTINGS" onClose={onClose} maxWidth={460}>
+    <div style={{padding:"10px 12px",borderRadius:9,background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.15)",marginBottom:16}}>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#93C5FD",lineHeight:1.6}}>
+        Files upload directly to this Google Drive folder via the Drive API.
+      </div>
+    </div>
+    <FormRow label="FOLDER DISPLAY NAME">
+      <input style={IS} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. IAR Daily Exports"/>
+    </FormRow>
+    <FormRow label="GOOGLE DRIVE FOLDER URL">
+      <input style={IS} value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://drive.google.com/drive/folders/…"/>
+      {url&&!extractFolderId(url)&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FCA5A5",marginTop:5}}>Doesn't look like a Drive folder URL.</div>}
+      {url&&extractFolderId(url)&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#34D399",marginTop:5}}>✓ Folder ID detected</div>}
+    </FormRow>
+    <div style={{display:"flex",gap:9,marginTop:6}}>
+      {currentFolder&&<button onClick={()=>onSave(null)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Remove</button>}
+      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
+      <button onClick={handleSave} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#1D4ED8,#3B82F6)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save</button>
+    </div>
+  </Modal>;
+}
+
+function ExportModal({weekIdx,day,tasks,checkedSet,notes,driveFolder,onClose}){
+  const [fmt,setFmt]=useState("csv");
+  const [copied,setCopied]=useState(false);
+  const [dlState,setDlState]=useState("idle");
+  const [errorMsg,setErrorMsg]=useState("");
+  const [uploadedLink,setUploadedLink]=useState(null);
+  const week=ALL_WEEKS[weekIdx];
+  const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
+  const fileBase=`mason_${day.toLowerCase()}_${dayDate.toISOString().slice(0,10)}`;
+  const done=tasks.filter(t=>checkedSet.has(t.id)).length;
+  const pct=Math.round(done/tasks.length*100);
+  const getContent=()=>fmt==="csv"?buildCSV(weekIdx,day,tasks,checkedSet,notes):buildTxt(weekIdx,day,tasks,checkedSet,notes);
+  const filename=`${fileBase}.${fmt}`;
+  const mime=fmt==="csv"?"text/csv":"text/plain";
+
+  const handleUpload=async()=>{
+    setDlState("authing"); setErrorMsg(""); setUploadedLink(null);
+    try{
+      const token=await getGoogleToken();
+      setDlState("uploading");
+      const file=await uploadToDrive(getContent(),filename,mime,driveFolder?.folderId||null,token);
+      setUploadedLink(`https://drive.google.com/file/d/${file.id}/view`);
+      setDlState("done");
+    }catch(e){
+      setErrorMsg(e.message||"Unknown error");
+      setDlState("error");
+    }
+  };
+  const handleCopy=()=>{navigator.clipboard.writeText(getContent()).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
+  const btnLabel=dlState==="authing"?"Connecting…":dlState==="uploading"?"Uploading…":dlState==="done"?"✓ Uploaded!":driveFolder?`Upload to ${driveFolder.name}`:"Upload to Drive";
+  const btnBg=dlState==="done"?"linear-gradient(135deg,#065f46,#34D399)":dlState==="error"?"linear-gradient(135deg,#7f1d1d,#ef4444)":"linear-gradient(135deg,#1D4ED8,#3B82F6)";
+
+  return <Modal title={`Export — ${DAY_FULL[day]}`} subtitle="EXPORT DAY SUMMARY" onClose={onClose} maxWidth={480}>
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>COMPLETION</span>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:pct===100?"#34D399":pct>=50?"#60A5FA":"#F472B6"}}>{pct}%  ·  {done}/{tasks.length}</span>
+      </div>
+      <ProgressBar pct={pct}/>
+    </div>
+    <FormRow label="FORMAT">
+      <div style={{display:"flex",gap:8}}>
+        {[["csv","Spreadsheet (.csv)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFmt(v)} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:fmt===v?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.02)",color:fmt===v?"#93C5FD":"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
+        ))}
+      </div>
+      {fmt==="csv"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Columns: Start Time · Task · Completed (TRUE/FALSE)</div>}
+    </FormRow>
+    <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
+      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{getContent().slice(0,380)}…</pre>
+    </div>
+    {driveFolder&&(
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.15)",marginBottom:12}}>
+        <span style={{fontSize:15}}>📁</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"Outfit",fontWeight:600,fontSize:12.5,color:"#93C5FD",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{driveFolder.name}</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{driveFolder.folderId?`ID: ${driveFolder.folderId.slice(0,20)}…`:"No folder ID"}</div>
+        </div>
+        {uploadedLink&&<a href={uploadedLink} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:7,background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.25)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,textDecoration:"none",flexShrink:0}}>View file ↗</a>}
+      </div>
+    )}
+    {dlState==="error"&&<div style={{padding:"9px 13px",borderRadius:9,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",marginBottom:12,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FCA5A5"}}>{errorMsg}</div>}
+    <div style={{display:"flex",gap:9}}>
+      <button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:14,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
+      <button onClick={handleUpload} disabled={["authing","uploading"].includes(dlState)}
+        style={{flex:1.6,padding:"11px 0",borderRadius:10,border:"none",background:btnBg,color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14,cursor:["authing","uploading"].includes(dlState)?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,transition:"background 0.3s"}}>
+        {["authing","uploading"].includes(dlState)&&<span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>}
+        {btnLabel}
+      </button>
+    </div>
+  </Modal>;
+}
+
+function TaskPill({t,checked,onToggle,onEdit,isDayOnly=false}){
+  const meta=CATEGORY_META[t.category]||CATEGORY_META.team;
+  return <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid rgba(255,255,255,0.03)",background:checked?"rgba(255,255,255,0.005)":meta.bg+"44",opacity:checked?0.38:1,transition:"background 0.2s,opacity 0.2s"}}>
+    <div onClick={onToggle} style={{width:20,height:20,borderRadius:6,flexShrink:0,border:`2px solid ${checked?meta.color:"rgba(255,255,255,0.14)"}`,background:checked?meta.color:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.18s"}}>
+      {checked&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    </div>
+    <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={onToggle}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontFamily:"Outfit",fontWeight:600,fontSize:13,color:checked?"rgba(255,255,255,0.25)":"#EFEFEF",textDecoration:checked?"line-through":"none"}}>{t.label}</span>
+        {isDayOnly&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#FB923C",background:"rgba(251,146,60,0.12)",padding:"1px 6px",borderRadius:99,border:"1px solid rgba(251,146,60,0.2)",flexShrink:0}}>today only</span>}
+      </div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.28)",marginTop:1}}>{t.time}</div>
+    </div>
+    <div style={{padding:"3px 8px",borderRadius:99,background:meta.color+"14",border:`1px solid ${meta.color}30`,fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:meta.color,fontWeight:500,flexShrink:0}}>{meta.label}</div>
+    <button onClick={onEdit} style={{width:26,height:26,borderRadius:7,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",cursor:"pointer",color:"rgba(255,255,255,0.25)",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✎</button>
+  </div>;
+}
+
+function App(){
+  const [weekIdx,setWeekIdx]=useState(()=>getCurrentWeekIdx());
+  const [activeDay,setActiveDay]=useState(()=>{const d=getTodayDayName();return DAYS.includes(d)?d:"Mon";});
+  const [allTasks,setAllTasks]=useState(()=>{try{const s=store.get(TASKS_KEY);return s?JSON.parse(s):DEFAULT_TASKS;}catch{return DEFAULT_TASKS;}});
+  const [timeSlots,setTimeSlots]=useState(()=>{try{const s=store.get(SLOTS_KEY);return s?JSON.parse(s):DEFAULT_TIME_SLOTS;}catch{return DEFAULT_TIME_SLOTS;}});
+  const [driveFolder,setDriveFolder]=useState(()=>{try{const s=store.get(DRIVE_KEY);return s&&s!=="null"?JSON.parse(s):null;}catch{return null;}});
+  const [overrides,setOverrides]=useState({});
+  const [checked,setChecked]=useState({Mon:new Set(),Tue:new Set(),Wed:new Set(),Thu:new Set(),Fri:new Set()});
+  const [notes,setNotes]=useState({Mon:"",Tue:"",Wed:"",Thu:"",Fri:""});
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(null);
+  const [view,setView]=useState("day");
+  const todayDay=getTodayDayName();
+  const isCurrentWeek=weekIdx===getCurrentWeekIdx();
+  const omKey=(wi,d)=>`${wi}_${d}`;
+
+  useEffect(()=>{
+    const nc={},nn={},nov={};
+    for(const d of DAYS){
+      const raw=store.get(checkedKey(weekIdx,d));
+      nc[d]=new Set(raw?JSON.parse(raw):[]);
+      nn[d]=store.get(notesKey(weekIdx,d))||"";
+      const ov=store.get(overrideKey(weekIdx,d));
+      if(ov){try{nov[omKey(weekIdx,d)]=JSON.parse(ov);}catch{}}
+    }
+    setChecked(nc); setNotes(nn); setOverrides(nov); setLoading(false);
+  },[weekIdx]);
+
+  const getOv=(wi,d)=>overrides[omKey(wi,d)]||{removed:[],added:[],slotOverrides:{}};
+  const updateOv=async(wi,d,updater)=>{
+    const prev=getOv(wi,d), next=updater(prev), key=omKey(wi,d);
+    setOverrides(p=>({...p,[key]:next}));
+    store.set(overrideKey(wi,d),JSON.stringify(next));
+  };
+
+  const toggle=useCallback((day,id)=>{
+    setChecked(prev=>{
+      const s=new Set(prev[day]); s.has(id)?s.delete(id):s.add(id);
+      const next={...prev,[day]:s};
+      store.set(checkedKey(weekIdx,day),JSON.stringify([...s]));
+      return next;
+    });
+  },[weekIdx]);
+
+  const handleNotes=(day,text)=>{setNotes(p=>({...p,[day]:text}));store.set(notesKey(weekIdx,day),text);};
+
+  const handleSaveRepeatingTask=t=>{
+    setAllTasks(prev=>{const ex=prev.find(x=>x.id===t.id);const next=ex?prev.map(x=>x.id===t.id?t:x):[...prev,t];store.set(TASKS_KEY,JSON.stringify(next));return next;});
+    if(!timeSlots.includes(t.time)){setTimeSlots(sl=>{const ns=[...sl,t.time];store.set(SLOTS_KEY,JSON.stringify(ns));return ns;});}
+    setModal(null);
+  };
+  const handleDeleteRepeatingTask=id=>{setAllTasks(prev=>{const next=prev.filter(x=>x.id!==id);store.set(TASKS_KEY,JSON.stringify(next));return next;});setModal(null);};
+  const handleSaveDayTask=t=>{
+    updateOv(weekIdx,activeDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==t.id),t]}));
+    if(!timeSlots.includes(t.time)){setTimeSlots(sl=>{const ns=[...sl,t.time];store.set(SLOTS_KEY,JSON.stringify(ns));return ns;});}
+    setModal(null);
+  };
+  const handleEditDayTask=t=>{updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).map(x=>x.id===t.id?t:x)}));setModal(null);};
+  const handleToggleRemoveTask=taskId=>{updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(taskId)?r.filter(x=>x!==taskId):[...r,taskId]};});setModal(null);};
+  const handleDaySlotChange=(taskId,newSlot)=>{
+    updateOv(weekIdx,activeDay,prev=>({...prev,slotOverrides:{...(prev.slotOverrides||{}),[taskId]:newSlot}}));
+    if(!timeSlots.includes(newSlot)){setTimeSlots(sl=>{const ns=[...sl,newSlot];store.set(SLOTS_KEY,JSON.stringify(ns));return ns;});}
+    setModal(null);
+  };
+  const handleSaveSlots=list=>{setTimeSlots(list);store.set(SLOTS_KEY,JSON.stringify(list));setModal(null);};
+  const handleSaveDrive=folder=>{setDriveFolder(folder);store.set(DRIVE_KEY,folder?JSON.stringify(folder):"null");setModal(null);};
+
+  const getDayTasks=d=>buildDayTasks(allTasks,d,getOv(weekIdx,d));
+  const activeTasks=getDayTasks(activeDay);
+  const ov=getOv(weekIdx,activeDay);
+  const dayPct=d=>{const t=getDayTasks(d);return t.length?Math.round((checked[d]?.size||0)/t.length*100):0;};
+  const weekPct=Math.round(DAYS.reduce((s,d)=>s+dayPct(d),0)/DAYS.length);
+  const totalWeekTasks=DAYS.reduce((s,d)=>s+getDayTasks(d).length,0);
+  const completedWeekTasks=DAYS.reduce((s,d)=>s+(checked[d]?.size||0),0);
+  const daysCompleted=DAYS.filter(d=>dayPct(d)===100).length;
+  const timeGroups=(()=>{const g={};activeTasks.forEach(t=>{(g[t.time]||(g[t.time]=[])).push(t);});return Object.entries(g).sort(([a],[b])=>timeSlots.indexOf(a)-timeSlots.indexOf(b));})();
+  const activePct=dayPct(activeDay);
+  const isDayOnlyAdded=t=>(ov.added||[]).some(x=>x.id===t.id);
+
+  return <div style={{minHeight:"100vh",background:"#0A0C12",backgroundImage:"radial-gradient(ellipse 80% 50% at 50% -10%, rgba(30,58,138,0.35) 0%, transparent 60%)",color:"#F0F0F0",fontFamily:"Outfit",paddingBottom:80}}>
+
+    <div style={{maxWidth:900,margin:"0 auto",padding:"28px 20px 0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#60A5FA",letterSpacing:"0.14em",marginBottom:7,opacity:0.8}}>CORNERSTONE HEALING CENTER · PHX OUTPATIENT</div>
+          <h1 style={{fontSize:26,fontWeight:900,letterSpacing:"-0.03em",lineHeight:1.15,color:"#fff"}}>
+            Mason's <span style={{background:"linear-gradient(90deg,#60A5FA,#A78BFA)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Operations Tracker</span>
+          </h1>
+          <div style={{marginTop:6,fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)"}}>IAR Lead · Week of {ALL_WEEKS[weekIdx]?.label}</div>
+        </div>
+        <ProgressRing pct={weekPct} size={72} stroke={5} color="#60A5FA" label="WEEK AVG"/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:22}}>
+        {[
+          {label:"TASKS DONE",value:`${completedWeekTasks}`,sub:`of ${totalWeekTasks} this week`,color:"#60A5FA",icon:"✅"},
+          {label:"WEEK PROGRESS",value:`${weekPct}%`,sub:`${daysCompleted} of 5 days complete`,color:weekPct===100?"#34D399":"#A78BFA",icon:"📈"},
+          {label:"TODAY",value:isCurrentWeek&&DAYS.includes(todayDay)?`${dayPct(todayDay)}%`:"—",sub:isCurrentWeek&&DAYS.includes(todayDay)?`${checked[todayDay]?.size||0}/${getDayTasks(todayDay).length} tasks`:"off day",color:"#34D399",icon:"🎯"},
+        ].map(c=>(
+          <div key={c.label} style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em"}}>{c.label}</div>
+              <span style={{fontSize:14}}>{c.icon}</span>
+            </div>
+            <div style={{fontFamily:"Outfit",fontWeight:800,fontSize:26,color:c.color,letterSpacing:"-0.03em",lineHeight:1}}>{c.value}</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.28)",marginTop:4}}>{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:5,marginTop:16,overflowX:"auto",paddingBottom:3}}>
+        {ALL_WEEKS.map((w,i)=>{
+          const isCur=getCurrentWeekIdx()===i,isSel=i===weekIdx;
+          return <button key={i} className="bh" onClick={()=>setWeekIdx(i)} style={{padding:"5px 12px",borderRadius:99,flexShrink:0,border:`1px solid ${isSel?"rgba(96,165,250,0.5)":"rgba(255,255,255,0.07)"}`,background:isSel?"rgba(96,165,250,0.12)":"transparent",color:isSel?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"'JetBrains Mono',monospace",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+            {isCur&&<span style={{width:6,height:6,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
+            {w.label}
+          </button>;
+        })}
+      </div>
+    </div>
+
+    <div style={{maxWidth:900,margin:"18px auto 0",padding:"0 20px"}}>
+      <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+        {[["day","Day View"],["week","Week Overview"]].map(([v,l])=>(
+          <button key={v} className="bh" onClick={()=>setView(v)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${view===v?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.07)"}`,background:view===v?"rgba(96,165,250,0.1)":"transparent",color:view===v?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>{l}</button>
+        ))}
+        <div style={{flex:1}}/>
+        <button className="bh" onClick={()=>setModal("slots")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⏱ Slots</button>
+        <button className="bh" onClick={()=>setModal("drive")} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${driveFolder?"rgba(96,165,250,0.3)":"rgba(255,255,255,0.07)"}`,background:driveFolder?"rgba(96,165,250,0.08)":"transparent",color:driveFolder?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+          📁 {driveFolder?driveFolder.name:"Drive Folder"}
+        </button>
+      </div>
+
+      <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:4}}>
+        {DAYS.map(d=>{
+          const pct=dayPct(d),isToday=isCurrentWeek&&d===todayDay,isActive=d===activeDay;
+          const ov2=getOv(weekIdx,d);
+          const hasOv=((ov2.removed||[]).length>0||(ov2.added||[]).length>0||Object.keys(ov2.slotOverrides||{}).length>0);
+          return <button key={d} className="bh" onClick={()=>{setActiveDay(d);setView("day");}} style={{flex:1,padding:"10px 4px 8px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?"rgba(96,165,250,0.12)":"transparent",outline:isActive?"1px solid rgba(96,165,250,0.25)":"none",opacity:isActive?1:0.45,position:"relative"}}>
+            {hasOv&&<span style={{position:"absolute",top:6,right:8,width:5,height:5,borderRadius:"50%",background:"#FB923C"}}/>}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                {isToday&&<span style={{width:6,height:6,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
+                <span style={{fontFamily:"Outfit",fontWeight:700,fontSize:13,color:isActive?"#93C5FD":"#CCC"}}>{d}</span>
+              </div>
+              <ProgressBar pct={pct} height={3}/>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:pct===100?"#34D399":"rgba(255,255,255,0.28)"}}>{pct}%</span>
+            </div>
+          </button>;
+        })}
+      </div>
+    </div>
+
+    {view==="week"&&(
+      <div style={{maxWidth:900,margin:"18px auto 0",padding:"0 20px",display:"flex",flexDirection:"column",gap:10}}>
+        {DAYS.map(d=>{
+          const pct=dayPct(d),isToday=isCurrentWeek&&d===todayDay,dt=getDayTasks(d);
+          return <div key={d} onClick={()=>{setActiveDay(d);setView("day");}} style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${pct===100?"rgba(52,211,153,0.2)":isToday?"rgba(96,165,250,0.2)":"rgba(255,255,255,0.07)"}`,borderRadius:14,padding:"14px 16px",cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontWeight:700,fontSize:16}}>{DAY_FULL[d]}</span>
+                {isToday&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"#34D399",background:"#34D39918",padding:"2px 8px",borderRadius:99}}>TODAY</span>}
+                {pct===100&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"#34D399",background:"#34D39918",padding:"2px 8px",borderRadius:99}}>DONE ✓</span>}
+              </div>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:pct===100?"#34D399":"rgba(255,255,255,0.38)"}}>{checked[d]?.size||0}/{dt.length} · {pct}%</span>
+            </div>
+            <ProgressBar pct={pct} height={5}/>
+          </div>;
+        })}
+      </div>
+    )}
+
+    {view==="day"&&(
+      <div style={{maxWidth:900,margin:"18px auto 0",padding:"0 20px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontWeight:800,fontSize:22,letterSpacing:"-0.025em"}}>{DAY_FULL[activeDay]}</span>
+            {isCurrentWeek&&activeDay===todayDay&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#34D399",background:"#34D39918",padding:"2px 9px",borderRadius:99}}>TODAY</span>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"rgba(255,255,255,0.3)"}}>{checked[activeDay]?.size||0}/{activeTasks.length}</span>
+            <button className="bh" onClick={()=>setModal("newDayTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.22)",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Today Only</button>
+            <button className="bh" onClick={()=>setModal("newTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.22)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Repeating</button>
+            <button className="bh" onClick={()=>setModal("export")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.22)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⬇ Export</button>
+            {(checked[activeDay]?.size||0)>0&&<button className="bh" onClick={()=>{setChecked(p=>({...p,[activeDay]:new Set()}));store.set(checkedKey(weekIdx,activeDay),"[]");}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:500,fontSize:12,cursor:"pointer"}}>Reset</button>}
+          </div>
+        </div>
+        <ProgressBar pct={activePct} height={6}/>
+
+        {loading?<div style={{textAlign:"center",padding:"48px 0",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)"}}>Loading…</div>
+        :activeTasks.length===0?<div style={{textAlign:"center",padding:"48px 0"}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)",marginBottom:12}}>No tasks for {DAY_FULL[activeDay]}</div>
+            <button onClick={()=>setModal("newDayTask")} style={{padding:"8px 18px",borderRadius:9,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.22)",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>+ Add task for today</button>
+          </div>
+        :<div style={{display:"flex",flexDirection:"column",gap:10,marginTop:14}}>
+          {timeGroups.map(([time,tasks])=>{
+            const allDone=tasks.every(t=>checked[activeDay]?.has(t.id));
+            return <div key={time} style={{borderRadius:13,overflow:"hidden",border:`1px solid ${allDone?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.06)"}`}}>
+              <div style={{padding:"6px 14px",background:allDone?"rgba(52,211,153,0.06)":"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.04)",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:allDone?"#34D399":"rgba(255,255,255,0.32)",flex:1}}>{time}</span>
+                {allDone&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#34D399",background:"#34D39914",padding:"1px 7px",borderRadius:99}}>DONE ✓</span>}
+              </div>
+              <div style={{background:"rgba(0,0,0,0.15)"}}>
+                {tasks.map(t=>{
+                  const dayOnly=isDayOnlyAdded(t);
+                  return <TaskPill key={t.id} t={t} checked={checked[activeDay]?.has(t.id)||false}
+                    onToggle={()=>toggle(activeDay,t.id)} isDayOnly={dayOnly}
+                    onEdit={()=>setModal(dayOnly?{editDayTask:t}:{editRepeatingTask:t})}/>;
+                })}
+              </div>
+            </div>;
+          })}
+        </div>}
+
+        {activePct===100&&!loading&&activeTasks.length>0&&(
+          <div style={{marginTop:16,padding:"14px 18px",borderRadius:14,background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:20}}>🎉</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:15,color:"#34D399"}}>Day complete!</div>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:1}}>All {activeTasks.length} tasks done</div>
+              </div>
+            </div>
+            <button className="bh" onClick={()=>setModal("export")} style={{padding:"7px 14px",borderRadius:9,background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.25)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>⬇ Export</button>
+          </div>
+        )}
+
+        {!loading&&<div style={{marginTop:16}}>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em",marginBottom:7}}>DAY NOTES</div>
+          <textarea value={notes[activeDay]||""} onChange={e=>handleNotes(activeDay,e.target.value)} placeholder="Add notes — blockers, follow-ups, observations…" style={{width:"100%",minHeight:90,padding:"11px 13px",background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,color:"#EFEFEF",fontFamily:"Outfit",fontSize:13.5,lineHeight:1.6,resize:"vertical",outline:"none"}}/>
+        </div>}
+      </div>
+    )}
+
+    {modal==="export"&&<ExportModal weekIdx={weekIdx} day={activeDay} tasks={activeTasks} checkedSet={checked[activeDay]||new Set()} notes={notes[activeDay]||""} driveFolder={driveFolder} onClose={()=>setModal(null)}/>}
+    {modal==="slots"&&<SlotsModal slots={timeSlots} onSave={handleSaveSlots} onClose={()=>setModal(null)}/>}
+    {modal==="drive"&&<DriveFolderModal currentFolder={driveFolder} onSave={handleSaveDrive} onClose={()=>setModal(null)}/>}
+    {modal==="newTask"&&<TaskModal allSlots={timeSlots} onSave={handleSaveRepeatingTask} onDelete={handleDeleteRepeatingTask} onClose={()=>setModal(null)}/>}
+    {modal==="newDayTask"&&<DayTaskModal allSlots={timeSlots} day={activeDay} onSave={handleSaveDayTask} onClose={()=>setModal(null)}/>}
+    {modal?.editRepeatingTask&&<DayOverridePanel task={modal.editRepeatingTask} allSlots={timeSlots} override={ov} onRemoveTask={handleToggleRemoveTask} onChangeSlot={handleDaySlotChange} onClose={()=>setModal(null)}/>}
+    {modal?.editDayTask&&<DayTaskModal editTask={modal.editDayTask} allSlots={timeSlots} day={activeDay} onSave={handleEditDayTask} onClose={()=>setModal(null)}/>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
