@@ -7,7 +7,6 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async></script>
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -66,9 +65,6 @@ const store = {
 const { useState, useEffect, useCallback, useRef } = React;
 
 // ── CONFIG ──
-const GAPI_CLIENT_ID = "542104837592-apuhqsr50hk7obc3d1idhht1s2hc1a81.apps.googleusercontent.com";
-const GAPI_SCOPE = "https://www.googleapis.com/auth/drive.file";
-
 // ── CONSTANTS ──
 const CATEGORY_META = {
   census:    { label:"Census",    color:"#60A5FA", bg:"#1E3A5F" },
@@ -188,7 +184,7 @@ function getCurrentWeekIdx(){
   return 0;
 }
 
-const WEEK_RANGE_KEY="mase_v3_week_range",SLOTS_KEY="mase_v3_slots",DRIVE_KEY="mase_v3_drive_folder";
+const WEEK_RANGE_KEY="mase_v3_week_range",SLOTS_KEY="mase_v3_slots";
 function tasksKey(wi){ return `mase_v3_w${wi}_tasks`; }
 function overrideKey(wi,d){ return `mase_v3_override_w${wi}_${d}`; }
 function checkedKey(wi,d){ return `mase_v3_w${wi}_${d}`; }
@@ -252,27 +248,6 @@ function buildTxt(weekIdx,day,tasks,checkedSet,notes){
   return lines.join("\n");
 }
 
-// ── GOOGLE DRIVE ──
-async function getGoogleToken(){
-  return new Promise((resolve,reject)=>{
-    if(!window.google?.accounts?.oauth2){reject(new Error("Google sign-in library not loaded yet."));return;}
-    const client=window.google.accounts.oauth2.initTokenClient({
-      client_id:GAPI_CLIENT_ID,scope:GAPI_SCOPE,
-      callback:(resp)=>resp.error?reject(new Error(resp.error)):resolve(resp.access_token),
-    });
-    client.requestAccessToken({prompt:""});
-  });
-}
-async function uploadToDrive(content,filename,mime,folderId,token){
-  const meta={name:filename,...(folderId?{parents:[folderId]}:{})};
-  const boundary="boundary_mase_export";
-  const body=[`--${boundary}`,"Content-Type: application/json; charset=UTF-8","",
-    JSON.stringify(meta),"",`--${boundary}`,`Content-Type: ${mime}`,"",content,"",`--${boundary}--`].join("\r\n");
-  const resp=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-    {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":`multipart/related; boundary=${boundary}`},body});
-  if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||"Upload failed");}
-  return resp.json();
-}
 
 // ── SYNC STATUS INDICATOR ──
 function SyncDot({status,dirty}){
@@ -492,39 +467,11 @@ function SlotsModal({slots,onSave,onClose}){
   </Modal>;
 }
 
-function DriveFolderModal({currentFolder,onSave,onClose}){
-  const [url,setUrl]=useState(currentFolder?.url||"");
-  const [name,setName]=useState(currentFolder?.name||"");
-  const extractFolderId=raw=>{const m=raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);return m?m[1]:null;};
-  const handleSave=()=>{
-    const tu=url.trim(),tn=name.trim()||"My Drive Folder";
-    if(!tu){onSave(null);return;}
-    onSave({url:tu,name:tn,folderId:extractFolderId(tu)});
-  };
-  return <Modal title="Google Drive export folder" subtitle="DRIVE SETTINGS" onClose={onClose} maxWidth={460}>
-    <FormRow label="FOLDER DISPLAY NAME">
-      <input style={IS} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. IAR Daily Exports"/>
-    </FormRow>
-    <FormRow label="GOOGLE DRIVE FOLDER URL">
-      <input style={IS} value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://drive.google.com/drive/folders/…"/>
-      {url&&!extractFolderId(url)&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FCA5A5",marginTop:5}}>Doesn't look like a Drive folder URL.</div>}
-      {url&&extractFolderId(url)&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#34D399",marginTop:5}}>✓ Folder ID detected</div>}
-    </FormRow>
-    <div style={{display:"flex",gap:9,marginTop:6}}>
-      {currentFolder&&<button onClick={()=>onSave(null)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Remove</button>}
-      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
-      <button onClick={handleSave} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#1D4ED8,#3B82F6)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save</button>
-    </div>
-  </Modal>;
-}
 
-function ExportModal({weekIdx,day,tasks,checkedSet,notes,driveFolder,onClose}){
+function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
   const [fmt,setFmt]=useState("csv");
   const [copied,setCopied]=useState(false);
   const [downloaded,setDownloaded]=useState(false);
-  const [dlState,setDlState]=useState("idle");
-  const [errorMsg,setErrorMsg]=useState("");
-  const [uploadedLink,setUploadedLink]=useState(null);
   const week=ALL_WEEKS[weekIdx];
   const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
   const fileBase=`mason_${day.toLowerCase()}_${dayDate.toISOString().slice(0,10)}`;
@@ -542,19 +489,7 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,driveFolder,onClose}){
     setDownloaded(true);
     setTimeout(()=>setDownloaded(false),2500);
   };
-  const handleUpload=async()=>{
-    setDlState("authing"); setErrorMsg(""); setUploadedLink(null);
-    try{
-      const token=await getGoogleToken();
-      setDlState("uploading");
-      const file=await uploadToDrive(content,filename,mime,driveFolder?.folderId||null,token);
-      setUploadedLink(`https://drive.google.com/file/d/${file.id}/view`);
-      setDlState("done");
-    }catch(e){ setErrorMsg(e.message||"Unknown error"); setDlState("error"); }
-  };
   const handleCopy=()=>{navigator.clipboard.writeText(content).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
-  const uploadLabel=dlState==="authing"?"Connecting…":dlState==="uploading"?"Uploading…":dlState==="done"?"✓ Uploaded!":driveFolder?`Upload to ${driveFolder.name}`:"Upload to Drive";
-  const uploadBg=dlState==="done"?"linear-gradient(135deg,#065f46,#34D399)":dlState==="error"?"linear-gradient(135deg,#7f1d1d,#ef4444)":"linear-gradient(135deg,#1D4ED8,#3B82F6)";
   return <Modal title={`Export — ${DAY_FULL[day]}`} subtitle="EXPORT DAY SUMMARY" onClose={onClose} maxWidth={480}>
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
@@ -574,23 +509,9 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,driveFolder,onClose}){
     <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
       <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{content.slice(0,380)}…</pre>
     </div>
-    {driveFolder&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.15)",marginBottom:12}}>
-      <span style={{fontSize:15}}>📁</span>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontFamily:"Outfit",fontWeight:600,fontSize:12.5,color:"#93C5FD",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{driveFolder.name}</div>
-        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{driveFolder.folderId?`ID: ${driveFolder.folderId.slice(0,20)}…`:"No folder ID"}</div>
-      </div>
-      {uploadedLink&&<a href={uploadedLink} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:7,background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.25)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,textDecoration:"none",flexShrink:0}}>View file ↗</a>}
-    </div>}
-    {dlState==="error"&&<div style={{padding:"9px 13px",borderRadius:9,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",marginBottom:12,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FCA5A5"}}>{errorMsg}</div>}
     <div style={{display:"flex",gap:9}}>
       <button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
-      <button onClick={handleDownload} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
-      <button onClick={handleUpload} disabled={["authing","uploading"].includes(dlState)}
-        style={{flex:1.6,padding:"11px 0",borderRadius:10,border:"none",background:uploadBg,color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:13,cursor:["authing","uploading"].includes(dlState)?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,transition:"background 0.3s"}}>
-        {["authing","uploading"].includes(dlState)&&<span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>}
-        {uploadLabel}
-      </button>
+      <button onClick={handleDownload} style={{flex:1.4,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:700,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
     </div>
   </Modal>;
 }
@@ -652,7 +573,6 @@ function App(){
   const [activeDay,setActiveDay]=useState(()=>{const d=getTodayDayName();return DAYS.includes(d)?d:"Mon";});
   const [allTasks,setAllTasks]=useState(DEFAULT_TASKS);
   const [timeSlots,setTimeSlots]=useState(DEFAULT_TIME_SLOTS);
-  const [driveFolder,setDriveFolder]=useState(null);
   const [overrides,setOverrides]=useState({});
   const [checked,setChecked]=useState({Mon:new Set(),Tue:new Set(),Wed:new Set(),Thu:new Set(),Fri:new Set()});
   const [notes,setNotes]=useState({Mon:"",Tue:"",Wed:"",Thu:"",Fri:""});
@@ -700,9 +620,8 @@ function App(){
     async function init(){
       setLoading(true);
       try{
-        const [rawSlots,rawDrive]=await Promise.all([store.get(SLOTS_KEY),store.get(DRIVE_KEY)]);
+        const rawSlots=await store.get(SLOTS_KEY);
         if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
-        if(rawDrive&&rawDrive!=="null") try{setDriveFolder(JSON.parse(rawDrive));}catch{}
 
         // Load tasks for this week; if none exist, copy from previous week or use defaults
         const rawTasks=await store.get(tasksKey(weekIdx));
@@ -801,14 +720,12 @@ function App(){
     setModal(null);
   };
   const handleSaveSlots=list=>{ setTimeSlots(list); setDirty(true); setModal(null); };
-  const handleSaveDrive=folder=>{ setDriveFolder(folder); setDirty(true); setModal(null); };
 
   const handleRefresh=async()=>{
     setSyncStatus("loading");
     try{
-      const [rawSlots,rawDrive]=await Promise.all([store.get(SLOTS_KEY),store.get(DRIVE_KEY)]);
+      const rawSlots=await store.get(SLOTS_KEY);
       if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
-      if(rawDrive&&rawDrive!=="null") try{setDriveFolder(JSON.parse(rawDrive));}catch{}
 
       const rawTasks=await store.get(tasksKey(weekIdx));
       if(rawTasks) try{setAllTasks(JSON.parse(rawTasks));}catch{}
@@ -837,7 +754,6 @@ function App(){
     setSyncStatus("saving");
     try{
       await store.set(SLOTS_KEY,JSON.stringify(timeSlots));
-      await store.set(DRIVE_KEY,driveFolder?JSON.stringify(driveFolder):"null");
       await store.set(tasksKey(weekIdx),JSON.stringify(allTasks));
       for(const d of DAYS){
         await store.set(checkedKey(weekIdx,d),JSON.stringify([...checked[d]]));
@@ -988,9 +904,6 @@ function App(){
         </button>
         <button className="bh" onClick={()=>setModal("weeks")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>📅 Weeks</button>
         <button className="bh" onClick={()=>setModal("slots")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⏱ Slots</button>
-        <button className="bh" onClick={()=>setModal("drive")} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${driveFolder?"rgba(96,165,250,0.3)":"rgba(255,255,255,0.07)"}`,background:driveFolder?"rgba(96,165,250,0.08)":"transparent",color:driveFolder?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-          📁 {driveFolder?driveFolder.name:"Drive Folder"}
-        </button>
       </div>
 
       <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:4}}>
@@ -1094,10 +1007,9 @@ function App(){
       </div>
     )}
 
-    {modal==="export"&&<ExportModal weekIdx={weekIdx} day={activeDay} tasks={activeTasks} checkedSet={checked[activeDay]||new Set()} notes={notes[activeDay]||""} driveFolder={driveFolder} onClose={()=>setModal(null)}/>}
+    {modal==="export"&&<ExportModal weekIdx={weekIdx} day={activeDay} tasks={activeTasks} checkedSet={checked[activeDay]||new Set()} notes={notes[activeDay]||""} onClose={()=>setModal(null)}/>}
     {modal==="slots"&&<SlotsModal slots={timeSlots} onSave={handleSaveSlots} onClose={()=>setModal(null)}/>}
     {modal==="weeks"&&<WeeksModal weeks={ALL_WEEKS} weekIdx={weekIdx} onAddWeek={handleAddWeek} onRemoveWeek={handleRemoveWeek} onClose={()=>setModal(null)}/>}
-    {modal==="drive"&&<DriveFolderModal currentFolder={driveFolder} onSave={handleSaveDrive} onClose={()=>setModal(null)}/>}
     {modal==="newTask"&&<TaskModal allSlots={timeSlots} onSave={handleSaveTask} onDelete={handleDeleteTask} onClose={()=>setModal(null)}/>}
     {modal==="newDayTask"&&<DayTaskModal allSlots={timeSlots} day={activeDay} onSave={handleSaveDayTask} onClose={()=>setModal(null)}/>}
     {modal?.editRepeatingTask&&<DayOverridePanel task={modal.editRepeatingTask} allSlots={timeSlots} override={ov} onRemoveTask={handleToggleRemoveTask} onChangeSlot={handleDaySlotChange} onEditTemplate={()=>setModal({editTaskTemplate:modal.editRepeatingTask})} onClose={()=>setModal(null)}/>}
