@@ -8,6 +8,9 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:#0A0C12;color:#F0F0F0;font-family:'Outfit',sans-serif;}
@@ -23,18 +26,48 @@
 <body>
 <div id="root"></div>
 
+<script>
+// ── FIREBASE INIT ──
+const firebaseConfig = {
+  apiKey: "AIzaSyD4yJY2J3hba8yPd3nVR71xnnzcD4mnEiM",
+  authDomain: "mason-task-manager.firebaseapp.com",
+  projectId: "mason-task-manager",
+  storageBucket: "mason-task-manager.firebasestorage.app",
+  messagingSenderId: "894492246506",
+  appId: "1:894492246506:web:84784faf7cb4075614b293"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ── FIRESTORE STORE ──
+// All data lives under a single document per key in the "tracker" collection.
+const store = {
+  get: async (key) => {
+    try {
+      const doc = await db.collection("tracker").doc(key).get();
+      return doc.exists ? doc.data().value : null;
+    } catch(e) { console.warn("store.get error", key, e); return null; }
+  },
+  set: async (key, val) => {
+    try {
+      await db.collection("tracker").doc(key).set({ value: val });
+    } catch(e) { console.warn("store.set error", key, e); }
+  },
+  // Subscribe to real-time updates for a key
+  subscribe: (key, callback) => {
+    return db.collection("tracker").doc(key).onSnapshot(doc => {
+      callback(doc.exists ? doc.data().value : null);
+    });
+  }
+};
+</script>
+
 <script type="text/babel">
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
 // ── CONFIG ──
-const GAPI_CLIENT_ID = "542104837592-b64nrh0pp31pmsre5a11hmr90fm1lhh0.apps.googleusercontent.com";
+const GAPI_CLIENT_ID = "542104837592-apuhqsr50hk7obc3d1idhht1s2hc1a81.apps.googleusercontent.com";
 const GAPI_SCOPE = "https://www.googleapis.com/auth/drive.file";
-
-// ── STORAGE (localStorage for standalone) ──
-const store = {
-  get: (key) => { try { return localStorage.getItem(key); } catch { return null; } },
-  set: (key, val) => { try { localStorage.setItem(key, val); } catch {} },
-};
 
 // ── CONSTANTS ──
 const CATEGORY_META = {
@@ -125,7 +158,7 @@ function extractStartTime(slotStr){
   const right=slotStr.slice(dash+1).trim();
   if(!/[aApP][mM]/.test(left)){
     const ampm=right.match(/[aApP][mM]/)?.[0]||"";
-    const lh=parseInt(left.split(":")[0]), rh=parseInt(right.split(":")[0]);
+    const lh=parseInt(left.split(":")[0]),rh=parseInt(right.split(":")[0]);
     if(ampm==="PM"&&lh!==12&&(rh===12||lh>rh)) return left+" AM";
     return left+" "+ampm;
   }
@@ -149,13 +182,13 @@ function getTodayDayName(){ return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][n
 function getCurrentWeekIdx(){
   const now=new Date();
   for(let i=ALL_WEEKS.length-1;i>=0;i--){
-    const sun=ALL_WEEKS[i].startSunday, sat=new Date(sun); sat.setDate(sat.getDate()+6);
+    const sun=ALL_WEEKS[i].startSunday,sat=new Date(sun); sat.setDate(sat.getDate()+6);
     if(now>=sun&&now<=sat) return i;
   }
   return 0;
 }
 
-const TASKS_KEY="mase_v3_tasks", SLOTS_KEY="mase_v3_slots", DRIVE_KEY="mase_v3_drive_folder";
+const TASKS_KEY="mase_v3_tasks",SLOTS_KEY="mase_v3_slots",DRIVE_KEY="mase_v3_drive_folder";
 function overrideKey(wi,d){ return `mase_v3_override_w${wi}_${d}`; }
 function checkedKey(wi,d){ return `mase_v3_w${wi}_${d}`; }
 function notesKey(wi,d){ return `mase_v3_notes_w${wi}_${d}`; }
@@ -180,8 +213,7 @@ function buildCSV(weekIdx,day,tasks,checkedSet,notes){
     [q("Date"),q(dateStr)].join(","),
     [q("Week of"),q(week.label)].join(","),
     [q("Completion"),q(`${done} of ${tasks.length} (${Math.round(done/tasks.length*100)}%)`)].join(","),
-    ",",
-    [q("Start Time"),q("Task"),q("Completed")].join(","),
+    ",",[q("Start Time"),q("Task"),q("Completed")].join(","),
   ];
   const seen={},groups=[];
   tasks.forEach(t=>{if(!seen[t.time]){seen[t.time]=true;groups.push(t.time);}});
@@ -191,7 +223,7 @@ function buildCSV(weekIdx,day,tasks,checkedSet,notes){
       rows.push([i===0?q(start):q(""),q(t.label),q(checkedSet.has(t.id)?"TRUE":"FALSE")].join(","));
     });
   });
-  if(notes?.trim()) rows.push(",", [q("Notes"),q(notes.trim()),q("")].join(","));
+  if(notes?.trim()) rows.push(",",[q("Notes"),q(notes.trim()),q("")].join(","));
   return rows.join("\r\n");
 }
 function buildTxt(weekIdx,day,tasks,checkedSet,notes){
@@ -220,9 +252,9 @@ function buildTxt(weekIdx,day,tasks,checkedSet,notes){
 // ── GOOGLE DRIVE ──
 async function getGoogleToken(){
   return new Promise((resolve,reject)=>{
-    if(!window.google?.accounts?.oauth2){reject(new Error("Google sign-in library not loaded yet. Wait a moment and try again."));return;}
+    if(!window.google?.accounts?.oauth2){reject(new Error("Google sign-in library not loaded yet."));return;}
     const client=window.google.accounts.oauth2.initTokenClient({
-      client_id:GAPI_CLIENT_ID, scope:GAPI_SCOPE,
+      client_id:GAPI_CLIENT_ID,scope:GAPI_SCOPE,
       callback:(resp)=>resp.error?reject(new Error(resp.error)):resolve(resp.access_token),
     });
     client.requestAccessToken({prompt:""});
@@ -237,6 +269,18 @@ async function uploadToDrive(content,filename,mime,folderId,token){
     {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":`multipart/related; boundary=${boundary}`},body});
   if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||"Upload failed");}
   return resp.json();
+}
+
+// ── SYNC STATUS INDICATOR ──
+function SyncDot({status}){
+  const colors={synced:"#34D399",syncing:"#FCD34D",error:"#EF4444",offline:"#6B7280"};
+  const labels={synced:"Synced",syncing:"Syncing…",error:"Sync error",offline:"Offline"};
+  return <div style={{display:"flex",alignItems:"center",gap:5}}>
+    <span style={{width:7,height:7,borderRadius:"50%",background:colors[status]||colors.offline,
+      boxShadow:status==="syncing"?`0 0 0 3px ${colors.syncing}33`:"none",
+      animation:status==="syncing"?"pulse 1s infinite":"none"}}/>
+    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{labels[status]||"Offline"}</span>
+  </div>;
 }
 
 // ── PRIMITIVES ──
@@ -259,7 +303,6 @@ function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label}){
     {label&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em"}}>{label}</div>}
   </div>;
 }
-
 function Modal({title,subtitle,onClose,children,maxWidth=500}){
   return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:20}}>
     <div onClick={e=>e.stopPropagation()} style={{background:"#111420",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 40px 100px rgba(0,0,0,0.7)"}}>
@@ -370,11 +413,8 @@ function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,on
   const [customSlot,setCustomSlot]=useState("");
   const [showC,setShowC]=useState(false);
   const isRemoved=(override?.removed||[]).includes(t.id);
-  const handleSlotSave=()=>{
-    const fs=showC&&customSlot.trim()?customSlot.trim():slot;
-    onChangeSlot(t.id,fs);
-  };
-  return <Modal title={`Edit for ${DAY_FULL[t._day||"Mon"]} only`} subtitle="DAY OVERRIDE" onClose={onClose} maxWidth={420}>
+  const handleSlotSave=()=>{ const fs=showC&&customSlot.trim()?customSlot.trim():slot; onChangeSlot(t.id,fs); };
+  return <Modal title="Edit for this day only" subtitle="DAY OVERRIDE" onClose={onClose} maxWidth={420}>
     <div style={{padding:"8px 12px",borderRadius:9,background:"rgba(251,146,60,0.08)",border:"1px solid rgba(251,146,60,0.2)",marginBottom:14}}>
       <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FB923C"}}>Changes here only affect this day. The repeating schedule stays unchanged.</span>
     </div>
@@ -437,16 +477,11 @@ function DriveFolderModal({currentFolder,onSave,onClose}){
   const [name,setName]=useState(currentFolder?.name||"");
   const extractFolderId=raw=>{const m=raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);return m?m[1]:null;};
   const handleSave=()=>{
-    const tu=url.trim(), tn=name.trim()||"My Drive Folder";
+    const tu=url.trim(),tn=name.trim()||"My Drive Folder";
     if(!tu){onSave(null);return;}
     onSave({url:tu,name:tn,folderId:extractFolderId(tu)});
   };
   return <Modal title="Google Drive export folder" subtitle="DRIVE SETTINGS" onClose={onClose} maxWidth={460}>
-    <div style={{padding:"10px 12px",borderRadius:9,background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.15)",marginBottom:16}}>
-      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#93C5FD",lineHeight:1.6}}>
-        Files upload directly to this Google Drive folder via the Drive API.
-      </div>
-    </div>
     <FormRow label="FOLDER DISPLAY NAME">
       <input style={IS} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. IAR Daily Exports"/>
     </FormRow>
@@ -477,7 +512,6 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,driveFolder,onClose}){
   const getContent=()=>fmt==="csv"?buildCSV(weekIdx,day,tasks,checkedSet,notes):buildTxt(weekIdx,day,tasks,checkedSet,notes);
   const filename=`${fileBase}.${fmt}`;
   const mime=fmt==="csv"?"text/csv":"text/plain";
-
   const handleUpload=async()=>{
     setDlState("authing"); setErrorMsg(""); setUploadedLink(null);
     try{
@@ -486,15 +520,11 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,driveFolder,onClose}){
       const file=await uploadToDrive(getContent(),filename,mime,driveFolder?.folderId||null,token);
       setUploadedLink(`https://drive.google.com/file/d/${file.id}/view`);
       setDlState("done");
-    }catch(e){
-      setErrorMsg(e.message||"Unknown error");
-      setDlState("error");
-    }
+    }catch(e){ setErrorMsg(e.message||"Unknown error"); setDlState("error"); }
   };
   const handleCopy=()=>{navigator.clipboard.writeText(getContent()).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
   const btnLabel=dlState==="authing"?"Connecting…":dlState==="uploading"?"Uploading…":dlState==="done"?"✓ Uploaded!":driveFolder?`Upload to ${driveFolder.name}`:"Upload to Drive";
   const btnBg=dlState==="done"?"linear-gradient(135deg,#065f46,#34D399)":dlState==="error"?"linear-gradient(135deg,#7f1d1d,#ef4444)":"linear-gradient(135deg,#1D4ED8,#3B82F6)";
-
   return <Modal title={`Export — ${DAY_FULL[day]}`} subtitle="EXPORT DAY SUMMARY" onClose={onClose} maxWidth={480}>
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
@@ -514,16 +544,14 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,driveFolder,onClose}){
     <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
       <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{getContent().slice(0,380)}…</pre>
     </div>
-    {driveFolder&&(
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.15)",marginBottom:12}}>
-        <span style={{fontSize:15}}>📁</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontFamily:"Outfit",fontWeight:600,fontSize:12.5,color:"#93C5FD",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{driveFolder.name}</div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{driveFolder.folderId?`ID: ${driveFolder.folderId.slice(0,20)}…`:"No folder ID"}</div>
-        </div>
-        {uploadedLink&&<a href={uploadedLink} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:7,background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.25)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,textDecoration:"none",flexShrink:0}}>View file ↗</a>}
+    {driveFolder&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.15)",marginBottom:12}}>
+      <span style={{fontSize:15}}>📁</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontFamily:"Outfit",fontWeight:600,fontSize:12.5,color:"#93C5FD",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{driveFolder.name}</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{driveFolder.folderId?`ID: ${driveFolder.folderId.slice(0,20)}…`:"No folder ID"}</div>
       </div>
-    )}
+      {uploadedLink&&<a href={uploadedLink} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:7,background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.25)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,textDecoration:"none",flexShrink:0}}>View file ↗</a>}
+    </div>}
     {dlState==="error"&&<div style={{padding:"9px 13px",borderRadius:9,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",marginBottom:12,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FCA5A5"}}>{errorMsg}</div>}
     <div style={{display:"flex",gap:9}}>
       <button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:14,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
@@ -554,72 +582,148 @@ function TaskPill({t,checked,onToggle,onEdit,isDayOnly=false}){
   </div>;
 }
 
+// ── MAIN APP ──
 function App(){
   const [weekIdx,setWeekIdx]=useState(()=>getCurrentWeekIdx());
   const [activeDay,setActiveDay]=useState(()=>{const d=getTodayDayName();return DAYS.includes(d)?d:"Mon";});
-  const [allTasks,setAllTasks]=useState(()=>{try{const s=store.get(TASKS_KEY);return s?JSON.parse(s):DEFAULT_TASKS;}catch{return DEFAULT_TASKS;}});
-  const [timeSlots,setTimeSlots]=useState(()=>{try{const s=store.get(SLOTS_KEY);return s?JSON.parse(s):DEFAULT_TIME_SLOTS;}catch{return DEFAULT_TIME_SLOTS;}});
-  const [driveFolder,setDriveFolder]=useState(()=>{try{const s=store.get(DRIVE_KEY);return s&&s!=="null"?JSON.parse(s):null;}catch{return null;}});
+  const [allTasks,setAllTasks]=useState(DEFAULT_TASKS);
+  const [timeSlots,setTimeSlots]=useState(DEFAULT_TIME_SLOTS);
+  const [driveFolder,setDriveFolder]=useState(null);
   const [overrides,setOverrides]=useState({});
   const [checked,setChecked]=useState({Mon:new Set(),Tue:new Set(),Wed:new Set(),Thu:new Set(),Fri:new Set()});
   const [notes,setNotes]=useState({Mon:"",Tue:"",Wed:"",Thu:"",Fri:""});
   const [loading,setLoading]=useState(true);
+  const [syncStatus,setSyncStatus]=useState("syncing");
   const [modal,setModal]=useState(null);
   const [view,setView]=useState("day");
   const todayDay=getTodayDayName();
   const isCurrentWeek=weekIdx===getCurrentWeekIdx();
   const omKey=(wi,d)=>`${wi}_${d}`;
+  const notesDebounce=useRef({});
 
+  // ── INITIAL LOAD ──
   useEffect(()=>{
-    const nc={},nn={},nov={};
-    for(const d of DAYS){
-      const raw=store.get(checkedKey(weekIdx,d));
-      nc[d]=new Set(raw?JSON.parse(raw):[]);
-      nn[d]=store.get(notesKey(weekIdx,d))||"";
-      const ov=store.get(overrideKey(weekIdx,d));
-      if(ov){try{nov[omKey(weekIdx,d)]=JSON.parse(ov);}catch{}}
+    let unsubs=[];
+    async function init(){
+      setLoading(true); setSyncStatus("syncing");
+      try{
+        // Load global config
+        const [rawTasks,rawSlots,rawDrive]=await Promise.all([
+          store.get(TASKS_KEY), store.get(SLOTS_KEY), store.get(DRIVE_KEY)
+        ]);
+        if(rawTasks) try{setAllTasks(JSON.parse(rawTasks));}catch{}
+        if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
+        if(rawDrive&&rawDrive!=="null") try{setDriveFolder(JSON.parse(rawDrive));}catch{}
+
+        // Load week data
+        const nc={},nn={},nov={};
+        for(const d of DAYS){
+          const [rawC,rawN,rawOv]=await Promise.all([
+            store.get(checkedKey(weekIdx,d)),
+            store.get(notesKey(weekIdx,d)),
+            store.get(overrideKey(weekIdx,d))
+          ]);
+          nc[d]=new Set(rawC?JSON.parse(rawC):[]);
+          nn[d]=rawN||"";
+          if(rawOv) try{nov[omKey(weekIdx,d)]=JSON.parse(rawOv);}catch{}
+        }
+        setChecked(nc); setNotes(nn); setOverrides(nov);
+        setSyncStatus("synced");
+
+        // ── REAL-TIME SUBSCRIPTIONS ──
+        // Subscribe to global config changes
+        unsubs.push(store.subscribe(TASKS_KEY, val=>{ if(val) try{setAllTasks(JSON.parse(val));}catch{} }));
+        unsubs.push(store.subscribe(SLOTS_KEY, val=>{ if(val) try{setTimeSlots(JSON.parse(val));}catch{} }));
+        unsubs.push(store.subscribe(DRIVE_KEY, val=>{ if(val&&val!=="null") try{setDriveFolder(JSON.parse(val));}catch{} else setDriveFolder(null); }));
+
+        // Subscribe to week-specific data
+        for(const d of DAYS){
+          const day=d;
+          unsubs.push(store.subscribe(checkedKey(weekIdx,day), val=>{
+            if(val) setChecked(p=>({...p,[day]:new Set(JSON.parse(val))}));
+          }));
+          unsubs.push(store.subscribe(notesKey(weekIdx,day), val=>{
+            setNotes(p=>({...p,[day]:val||""}));
+          }));
+          unsubs.push(store.subscribe(overrideKey(weekIdx,day), val=>{
+            const key=omKey(weekIdx,day);
+            if(val) try{setOverrides(p=>({...p,[key]:JSON.parse(val)}));}catch{}
+          }));
+        }
+      }catch(e){ console.error(e); setSyncStatus("error"); }
+      finally{ setLoading(false); }
     }
-    setChecked(nc); setNotes(nn); setOverrides(nov); setLoading(false);
+    init();
+    return ()=>unsubs.forEach(u=>u&&u());
   },[weekIdx]);
+
+  const setSyncing=()=>setSyncStatus("syncing");
+  const setSynced=()=>setSyncStatus("synced");
+  const setErr=()=>setSyncStatus("error");
 
   const getOv=(wi,d)=>overrides[omKey(wi,d)]||{removed:[],added:[],slotOverrides:{}};
   const updateOv=async(wi,d,updater)=>{
-    const prev=getOv(wi,d), next=updater(prev), key=omKey(wi,d);
+    const prev=getOv(wi,d),next=updater(prev),key=omKey(wi,d);
     setOverrides(p=>({...p,[key]:next}));
-    store.set(overrideKey(wi,d),JSON.stringify(next));
+    setSyncing();
+    try{ await store.set(overrideKey(wi,d),JSON.stringify(next)); setSynced(); }catch{ setErr(); }
   };
 
-  const toggle=useCallback((day,id)=>{
+  const toggle=useCallback(async(day,id)=>{
     setChecked(prev=>{
       const s=new Set(prev[day]); s.has(id)?s.delete(id):s.add(id);
       const next={...prev,[day]:s};
-      store.set(checkedKey(weekIdx,day),JSON.stringify([...s]));
+      setSyncing();
+      store.set(checkedKey(weekIdx,day),JSON.stringify([...s])).then(setSynced).catch(setErr);
       return next;
     });
   },[weekIdx]);
 
-  const handleNotes=(day,text)=>{setNotes(p=>({...p,[day]:text}));store.set(notesKey(weekIdx,day),text);};
+  const handleNotes=(day,text)=>{
+    setNotes(p=>({...p,[day]:text}));
+    // Debounce notes saves to avoid hammering Firestore on every keystroke
+    clearTimeout(notesDebounce.current[day]);
+    notesDebounce.current[day]=setTimeout(()=>{
+      setSyncing();
+      store.set(notesKey(weekIdx,day),text).then(setSynced).catch(setErr);
+    },800);
+  };
 
-  const handleSaveRepeatingTask=t=>{
-    setAllTasks(prev=>{const ex=prev.find(x=>x.id===t.id);const next=ex?prev.map(x=>x.id===t.id?t:x):[...prev,t];store.set(TASKS_KEY,JSON.stringify(next));return next;});
-    if(!timeSlots.includes(t.time)){setTimeSlots(sl=>{const ns=[...sl,t.time];store.set(SLOTS_KEY,JSON.stringify(ns));return ns;});}
+  const handleSaveRepeatingTask=async t=>{
+    const next=allTasks.find(x=>x.id===t.id)?allTasks.map(x=>x.id===t.id?t:x):[...allTasks,t];
+    setAllTasks(next); setSyncing();
+    try{ await store.set(TASKS_KEY,JSON.stringify(next)); setSynced(); }catch{ setErr(); }
+    if(!timeSlots.includes(t.time)){
+      const ns=[...timeSlots,t.time]; setTimeSlots(ns); setSyncing();
+      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); setSynced(); }catch{ setErr(); }
+    }
     setModal(null);
   };
-  const handleDeleteRepeatingTask=id=>{setAllTasks(prev=>{const next=prev.filter(x=>x.id!==id);store.set(TASKS_KEY,JSON.stringify(next));return next;});setModal(null);};
-  const handleSaveDayTask=t=>{
-    updateOv(weekIdx,activeDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==t.id),t]}));
-    if(!timeSlots.includes(t.time)){setTimeSlots(sl=>{const ns=[...sl,t.time];store.set(SLOTS_KEY,JSON.stringify(ns));return ns;});}
+  const handleDeleteRepeatingTask=async id=>{
+    const next=allTasks.filter(x=>x.id!==id); setAllTasks(next); setSyncing();
+    try{ await store.set(TASKS_KEY,JSON.stringify(next)); setSynced(); }catch{ setErr(); }
     setModal(null);
   };
-  const handleEditDayTask=t=>{updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).map(x=>x.id===t.id?t:x)}));setModal(null);};
-  const handleToggleRemoveTask=taskId=>{updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(taskId)?r.filter(x=>x!==taskId):[...r,taskId]};});setModal(null);};
-  const handleDaySlotChange=(taskId,newSlot)=>{
-    updateOv(weekIdx,activeDay,prev=>({...prev,slotOverrides:{...(prev.slotOverrides||{}),[taskId]:newSlot}}));
-    if(!timeSlots.includes(newSlot)){setTimeSlots(sl=>{const ns=[...sl,newSlot];store.set(SLOTS_KEY,JSON.stringify(ns));return ns;});}
+  const handleSaveDayTask=async t=>{
+    await updateOv(weekIdx,activeDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==t.id),t]}));
+    if(!timeSlots.includes(t.time)){
+      const ns=[...timeSlots,t.time]; setTimeSlots(ns);
+      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); }catch{}
+    }
     setModal(null);
   };
-  const handleSaveSlots=list=>{setTimeSlots(list);store.set(SLOTS_KEY,JSON.stringify(list));setModal(null);};
-  const handleSaveDrive=folder=>{setDriveFolder(folder);store.set(DRIVE_KEY,folder?JSON.stringify(folder):"null");setModal(null);};
+  const handleEditDayTask=async t=>{ await updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).map(x=>x.id===t.id?t:x)})); setModal(null); };
+  const handleToggleRemoveTask=async taskId=>{ await updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(taskId)?r.filter(x=>x!==taskId):[...r,taskId]};}); setModal(null); };
+  const handleDaySlotChange=async(taskId,newSlot)=>{
+    await updateOv(weekIdx,activeDay,prev=>({...prev,slotOverrides:{...(prev.slotOverrides||{}),[taskId]:newSlot}}));
+    if(!timeSlots.includes(newSlot)){
+      const ns=[...timeSlots,newSlot]; setTimeSlots(ns);
+      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); }catch{}
+    }
+    setModal(null);
+  };
+  const handleSaveSlots=async list=>{ setTimeSlots(list); setSyncing(); try{ await store.set(SLOTS_KEY,JSON.stringify(list)); setSynced(); }catch{ setErr(); } setModal(null); };
+  const handleSaveDrive=async folder=>{ setDriveFolder(folder); setSyncing(); try{ await store.set(DRIVE_KEY,folder?JSON.stringify(folder):"null"); setSynced(); }catch{ setErr(); } setModal(null); };
 
   const getDayTasks=d=>buildDayTasks(allTasks,d,getOv(weekIdx,d));
   const activeTasks=getDayTasks(activeDay);
@@ -642,7 +746,10 @@ function App(){
           <h1 style={{fontSize:26,fontWeight:900,letterSpacing:"-0.03em",lineHeight:1.15,color:"#fff"}}>
             Mason's <span style={{background:"linear-gradient(90deg,#60A5FA,#A78BFA)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Operations Tracker</span>
           </h1>
-          <div style={{marginTop:6,fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)"}}>IAR Lead · Week of {ALL_WEEKS[weekIdx]?.label}</div>
+          <div style={{marginTop:6,display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)"}}>IAR Lead · Week of {ALL_WEEKS[weekIdx]?.label}</span>
+            <SyncDot status={syncStatus}/>
+          </div>
         </div>
         <ProgressRing pct={weekPct} size={72} stroke={5} color="#60A5FA" label="WEEK AVG"/>
       </div>
@@ -738,12 +845,12 @@ function App(){
             <button className="bh" onClick={()=>setModal("newDayTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.22)",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Today Only</button>
             <button className="bh" onClick={()=>setModal("newTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.22)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Repeating</button>
             <button className="bh" onClick={()=>setModal("export")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.22)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⬇ Export</button>
-            {(checked[activeDay]?.size||0)>0&&<button className="bh" onClick={()=>{setChecked(p=>({...p,[activeDay]:new Set()}));store.set(checkedKey(weekIdx,activeDay),"[]");}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:500,fontSize:12,cursor:"pointer"}}>Reset</button>}
+            {(checked[activeDay]?.size||0)>0&&<button className="bh" onClick={async()=>{setChecked(p=>({...p,[activeDay]:new Set()}));setSyncing();try{await store.set(checkedKey(weekIdx,activeDay),"[]");setSynced();}catch{setErr();}}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:500,fontSize:12,cursor:"pointer"}}>Reset</button>}
           </div>
         </div>
         <ProgressBar pct={activePct} height={6}/>
 
-        {loading?<div style={{textAlign:"center",padding:"48px 0",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)"}}>Loading…</div>
+        {loading?<div style={{textAlign:"center",padding:"48px 0",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)"}}>Loading from cloud…</div>
         :activeTasks.length===0?<div style={{textAlign:"center",padding:"48px 0"}}>
             <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)",marginBottom:12}}>No tasks for {DAY_FULL[activeDay]}</div>
             <button onClick={()=>setModal("newDayTask")} style={{padding:"8px 18px",borderRadius:9,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.22)",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>+ Add task for today</button>
