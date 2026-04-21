@@ -164,10 +164,10 @@ function extractStartTime(slotStr){
   }
   return left;
 }
-function generateWeeks(){
+function generateWeeks(startDate,endDate){
   const weeks=[];
-  let cursor=new Date(2026,3,19);
-  const end=new Date(2026,5,30);
+  let cursor=new Date(startDate); cursor.setHours(0,0,0,0);
+  const end=new Date(endDate); end.setHours(23,59,59,999);
   while(cursor<=end){
     const mon=new Date(cursor); mon.setDate(mon.getDate()+1);
     const fri=new Date(cursor); fri.setDate(fri.getDate()+5);
@@ -177,7 +177,7 @@ function generateWeeks(){
   }
   return weeks;
 }
-const ALL_WEEKS=generateWeeks();
+let ALL_WEEKS=[];
 function getTodayDayName(){ return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date().getDay()]; }
 function getCurrentWeekIdx(){
   const now=new Date();
@@ -188,11 +188,14 @@ function getCurrentWeekIdx(){
   return 0;
 }
 
-const TASKS_KEY="mase_v3_tasks",SLOTS_KEY="mase_v3_slots",DRIVE_KEY="mase_v3_drive_folder";
+const WEEK_RANGE_KEY="mase_v3_week_range",SLOTS_KEY="mase_v3_slots",DRIVE_KEY="mase_v3_drive_folder";
+function tasksKey(wi){ return `mase_v3_w${wi}_tasks`; }
 function overrideKey(wi,d){ return `mase_v3_override_w${wi}_${d}`; }
 function checkedKey(wi,d){ return `mase_v3_w${wi}_${d}`; }
 function notesKey(wi,d){ return `mase_v3_notes_w${wi}_${d}`; }
 function uid(){ return "t_"+Math.random().toString(36).slice(2,9); }
+function addWeeks(date,weeks){const d=new Date(date);d.setDate(d.getDate()+weeks*7);return d;}
+function getDefaultWeekRange(){const now=new Date();now.setDate(now.getDate()-(now.getDay()||7));const s=new Date(now);s.setDate(s.getDate()-7);const e=new Date(now);e.setDate(e.getDate()+14*7);return {start:s,end:e};}
 
 function buildDayTasks(allTasks,day,override){
   const base=allTasks.filter(t=>taskAppearsOnDay(t,day));
@@ -272,14 +275,15 @@ async function uploadToDrive(content,filename,mime,folderId,token){
 }
 
 // ── SYNC STATUS INDICATOR ──
-function SyncDot({status}){
-  const colors={synced:"#34D399",syncing:"#FCD34D",error:"#EF4444",offline:"#6B7280"};
-  const labels={synced:"Synced",syncing:"Syncing…",error:"Sync error",offline:"Offline"};
+function SyncDot({status,dirty}){
+  const colors={idle:"#34D399",loading:"#FCD34D",saving:"#A78BFA",error:"#EF4444",dirty:"#FB923C"};
+  const labels={idle:"All saved",loading:"Loading…",saving:"Saving…",error:"Error",dirty:"Unsaved changes"};
+  const st=dirty?"dirty":status;
   return <div style={{display:"flex",alignItems:"center",gap:5}}>
-    <span style={{width:7,height:7,borderRadius:"50%",background:colors[status]||colors.offline,
-      boxShadow:status==="syncing"?`0 0 0 3px ${colors.syncing}33`:"none",
-      animation:status==="syncing"?"pulse 1s infinite":"none"}}/>
-    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{labels[status]||"Offline"}</span>
+    <span style={{width:7,height:7,borderRadius:"50%",background:colors[st]||colors.idle,
+      boxShadow:(st==="loading"||st==="saving")?`0 0 0 3px ${colors[st]}33`:"none",
+      animation:(st==="loading"||st==="saving"||st==="dirty")?"pulse 1s infinite":"none"}}/>
+    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{labels[st]||"Unknown"}</span>
   </div>;
 }
 
@@ -334,10 +338,12 @@ function TaskModal({editTask,allSlots,onSave,onDelete,onClose}){
   const [customDays,setCustomDays]=useState(editTask?.customDays||[]);
   const [customSlot,setCustomSlot]=useState("");
   const [showCS,setShowCS]=useState(false);
+  const [scope,setScope]=useState("future");
+  const [confirmDel,setConfirmDel]=useState(false);
   const handleSave=()=>{
     if(!label.trim()) return;
     const ft=showCS&&customSlot.trim()?customSlot.trim():time;
-    onSave({...editTask,id:editTask?.id||uid(),label:label.trim(),category,time:ft,freq,customDays});
+    onSave({...editTask,id:editTask?.id||uid(),label:label.trim(),category,time:ft,freq,customDays},isNew?"all":scope);
   };
   const toggleDay=d=>setCustomDays(p=>p.includes(d)?p.filter(x=>x!==d):[...p,d]);
   return <Modal title={isNew?"Add repeating task":"Edit repeating task"} subtitle={isNew?"NEW TASK":"EDIT TASK"} onClose={onClose} maxWidth={460}>
@@ -362,10 +368,23 @@ function TaskModal({editTask,allSlots,onSave,onDelete,onClose}){
         {DAYS.map(d=><button key={d} onClick={()=>toggleDay(d)} style={{flex:1,padding:"6px 4px",borderRadius:7,cursor:"pointer",border:`1px solid ${customDays.includes(d)?"#60A5FA":"rgba(255,255,255,0.1)"}`,background:customDays.includes(d)?"rgba(96,165,250,0.15)":"rgba(255,255,255,0.03)",color:customDays.includes(d)?"#93C5FD":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:12}}>{d}</button>)}
       </div>}
     </FormRow>
+    {!isNew&&<FormRow label="APPLY CHANGES TO">
+      <div style={{display:"flex",gap:6}}>
+        {[["this","This week"],["future","This + future"],["all","All weeks"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setScope(v)} style={{flex:1,padding:"7px 4px",borderRadius:7,border:`1px solid ${scope===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:scope===v?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.025)",color:scope===v?"#93C5FD":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:11.5,cursor:"pointer"}}>{l}</button>
+        ))}
+      </div>
+    </FormRow>}
     <div style={{display:"flex",gap:9,marginTop:6}}>
-      {!isNew&&<button onClick={()=>onDelete(editTask.id)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Delete</button>}
-      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
-      <button onClick={handleSave} disabled={!label.trim()} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:label.trim()?"pointer":"not-allowed",border:"none",background:label.trim()?"linear-gradient(135deg,#1D4ED8,#3B82F6)":"rgba(255,255,255,0.05)",color:label.trim()?"#fff":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>{isNew?"Add Task":"Save Changes"}</button>
+      {!isNew&&!confirmDel&&<button onClick={()=>setConfirmDel(true)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Delete</button>}
+      {!isNew&&confirmDel&&<>
+        <button onClick={()=>onDelete(editTask.id,scope)} style={{padding:"9px 10px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.5)",background:"rgba(239,68,68,0.15)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:700,fontSize:12}}>Confirm delete</button>
+        <button onClick={()=>setConfirmDel(false)} style={{padding:"9px 8px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:12}}>Cancel</button>
+      </>}
+      {!confirmDel&&<>
+        <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
+        <button onClick={handleSave} disabled={!label.trim()} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:label.trim()?"pointer":"not-allowed",border:"none",background:label.trim()?"linear-gradient(135deg,#1D4ED8,#3B82F6)":"rgba(255,255,255,0.05)",color:label.trim()?"#fff":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>{isNew?"Add Task":"Save Changes"}</button>
+      </>}
     </div>
   </Modal>;
 }
@@ -406,7 +425,7 @@ function DayTaskModal({editTask,allSlots,day,onSave,onClose}){
   </Modal>;
 }
 
-function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,onClose}){
+function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,onEditTemplate,onClose}){
   const slotOverrides=override?.slotOverrides||{};
   const currentSlot=slotOverrides[t.id]||t.time;
   const [slot,setSlot]=useState(currentSlot);
@@ -429,8 +448,9 @@ function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,on
       </select>
       {showC&&<input style={{...IS,marginTop:8}} value={customSlot} onChange={e=>setCustomSlot(e.target.value)} placeholder="e.g. 3:00 – 3:30 PM"/>}
     </FormRow>
-    <div style={{display:"flex",gap:9,marginTop:6}}>
+    <div style={{display:"flex",gap:9,marginTop:6,flexWrap:"wrap"}}>
       <button onClick={()=>onRemoveTask(t.id)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>{isRemoved?"Restore task":"Remove today"}</button>
+      <button onClick={onEditTemplate} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.07)",color:"#C4B5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Edit template…</button>
       <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
       <button onClick={handleSlotSave} style={{flex:1.4,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#d97706,#f59e0b)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save for Today</button>
     </div>
@@ -582,9 +602,42 @@ function TaskPill({t,checked,onToggle,onEdit,isDayOnly=false}){
   </div>;
 }
 
+function WeeksModal({weeks,weekIdx,onAddWeek,onRemoveWeek,onClose}){
+  const [confirm,setConfirm]=useState(null);
+  return <Modal title="Manage weeks" subtitle="WEEKS" onClose={onClose} maxWidth={520}>
+    <div style={{display:"flex",gap:8,marginBottom:14}}>
+      <button onClick={()=>onAddWeek("before")} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(96,165,250,0.3)",background:"rgba(96,165,250,0.07)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>← Add week before</button>
+      <button onClick={()=>onAddWeek("end")} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.07)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>Add week after →</button>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:360,overflowY:"auto",marginBottom:14}}>
+      {weeks.map((w,i)=>{
+        const isCur=i===getCurrentWeekIdx(),isSel=i===weekIdx,canRemove=(i===0||i===weeks.length-1)&&weeks.length>1;
+        return <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:isSel?"rgba(96,165,250,0.08)":"rgba(255,255,255,0.02)",border:`1px solid ${isSel?"rgba(96,165,250,0.25)":isCur?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.06)"}`}}>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:7}}>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:isSel?"#93C5FD":isCur?"#34D399":"rgba(255,255,255,0.45)"}}>{w.label}</span>
+            {isCur&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#34D399",background:"#34D39914",padding:"1px 6px",borderRadius:99}}>CURRENT</span>}
+            {isSel&&!isCur&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#93C5FD",background:"rgba(96,165,250,0.1)",padding:"1px 6px",borderRadius:99}}>VIEWING</span>}
+          </div>
+          {canRemove&&(confirm?.wi===i
+            ?<div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)"}}>Remove?</span>
+                <button onClick={()=>{onRemoveWeek(i);setConfirm(null);}} style={{padding:"3px 10px",borderRadius:7,background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",color:"#FCA5A5",cursor:"pointer",fontFamily:"Outfit",fontSize:11,fontWeight:700}}>Yes</button>
+                <button onClick={()=>setConfirm(null)} style={{padding:"3px 10px",borderRadius:7,background:"transparent",border:"1px solid rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontFamily:"Outfit",fontSize:11}}>No</button>
+              </div>
+            :<button onClick={()=>setConfirm({wi:i})} style={{padding:"3px 10px",borderRadius:7,background:"transparent",border:"1px solid rgba(239,68,68,0.2)",color:"#FCA5A5",cursor:"pointer",fontFamily:"Outfit",fontSize:11}}>Remove</button>
+          )}
+        </div>;
+      })}
+    </div>
+    <button onClick={onClose} style={{width:"100%",padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Done</button>
+  </Modal>;
+}
+
 // ── MAIN APP ──
 function App(){
-  const [weekIdx,setWeekIdx]=useState(()=>getCurrentWeekIdx());
+  const [weekIdx,setWeekIdx]=useState(0);
+  const [weeksReady,setWeeksReady]=useState(false);
+  const [weekRange,setWeekRange]=useState(null);
   const [activeDay,setActiveDay]=useState(()=>{const d=getTodayDayName();return DAYS.includes(d)?d:"Mon";});
   const [allTasks,setAllTasks]=useState(DEFAULT_TASKS);
   const [timeSlots,setTimeSlots]=useState(DEFAULT_TIME_SLOTS);
@@ -593,29 +646,64 @@ function App(){
   const [checked,setChecked]=useState({Mon:new Set(),Tue:new Set(),Wed:new Set(),Thu:new Set(),Fri:new Set()});
   const [notes,setNotes]=useState({Mon:"",Tue:"",Wed:"",Thu:"",Fri:""});
   const [loading,setLoading]=useState(true);
-  const [syncStatus,setSyncStatus]=useState("syncing");
+  const [dirty,setDirty]=useState(false);
+  const [syncStatus,setSyncStatus]=useState("idle");
   const [modal,setModal]=useState(null);
   const [view,setView]=useState("day");
   const todayDay=getTodayDayName();
   const isCurrentWeek=weekIdx===getCurrentWeekIdx();
   const omKey=(wi,d)=>`${wi}_${d}`;
-  const notesDebounce=useRef({});
 
-  // ── INITIAL LOAD ──
+  // ── WEEK RANGE INIT (once) ──
   useEffect(()=>{
-    let unsubs=[];
-    async function init(){
-      setLoading(true); setSyncStatus("syncing");
+    async function loadRange(){
       try{
-        // Load global config
-        const [rawTasks,rawSlots,rawDrive]=await Promise.all([
-          store.get(TASKS_KEY), store.get(SLOTS_KEY), store.get(DRIVE_KEY)
-        ]);
-        if(rawTasks) try{setAllTasks(JSON.parse(rawTasks));}catch{}
+        const raw=await store.get(WEEK_RANGE_KEY);
+        let range=null;
+        if(raw) try{const r=JSON.parse(raw);range={start:new Date(r.start),end:new Date(r.end)};}catch{}
+        if(!range){
+          range=getDefaultWeekRange();
+          await store.set(WEEK_RANGE_KEY,JSON.stringify({start:range.start.toISOString(),end:range.end.toISOString()}));
+        }
+        ALL_WEEKS.length=0;
+        generateWeeks(range.start,range.end).forEach(w=>ALL_WEEKS.push(w));
+        setWeekRange(range);
+        const ci=getCurrentWeekIdx();
+        setWeekIdx(ci>=0?ci:0);
+      }catch(e){
+        console.error(e);
+        const range=getDefaultWeekRange();
+        ALL_WEEKS.length=0;
+        generateWeeks(range.start,range.end).forEach(w=>ALL_WEEKS.push(w));
+        setWeekRange(range);
+        setWeekIdx(0);
+      }
+      setWeeksReady(true);
+    }
+    loadRange();
+  },[]);
+
+  // ── PER-WEEK DATA LOAD (on weekIdx change) ──
+  useEffect(()=>{
+    if(!weeksReady) return;
+    async function init(){
+      setLoading(true);
+      try{
+        const [rawSlots,rawDrive]=await Promise.all([store.get(SLOTS_KEY),store.get(DRIVE_KEY)]);
         if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
         if(rawDrive&&rawDrive!=="null") try{setDriveFolder(JSON.parse(rawDrive));}catch{}
 
-        // Load week data
+        // Load tasks for this week; if none exist, copy from previous week or use defaults
+        const rawTasks=await store.get(tasksKey(weekIdx));
+        if(rawTasks){ try{setAllTasks(JSON.parse(rawTasks));}catch{} }
+        else{
+          let base=DEFAULT_TASKS;
+          if(weekIdx>0){ const prev=await store.get(tasksKey(weekIdx-1)); if(prev) try{base=JSON.parse(prev);}catch{} }
+          setAllTasks(base);
+          await store.set(tasksKey(weekIdx),JSON.stringify(base));
+        }
+
+        // Load checked / notes / overrides for this week
         const nc={},nn={},nov={};
         for(const d of DAYS){
           const [rawC,rawN,rawOv]=await Promise.all([
@@ -628,102 +716,193 @@ function App(){
           if(rawOv) try{nov[omKey(weekIdx,d)]=JSON.parse(rawOv);}catch{}
         }
         setChecked(nc); setNotes(nn); setOverrides(nov);
-        setSyncStatus("synced");
-
-        // ── REAL-TIME SUBSCRIPTIONS ──
-        // Subscribe to global config changes
-        unsubs.push(store.subscribe(TASKS_KEY, val=>{ if(val) try{setAllTasks(JSON.parse(val));}catch{} }));
-        unsubs.push(store.subscribe(SLOTS_KEY, val=>{ if(val) try{setTimeSlots(JSON.parse(val));}catch{} }));
-        unsubs.push(store.subscribe(DRIVE_KEY, val=>{ if(val&&val!=="null") try{setDriveFolder(JSON.parse(val));}catch{} else setDriveFolder(null); }));
-
-        // Subscribe to week-specific data
-        for(const d of DAYS){
-          const day=d;
-          unsubs.push(store.subscribe(checkedKey(weekIdx,day), val=>{
-            if(val) setChecked(p=>({...p,[day]:new Set(JSON.parse(val))}));
-          }));
-          unsubs.push(store.subscribe(notesKey(weekIdx,day), val=>{
-            setNotes(p=>({...p,[day]:val||""}));
-          }));
-          unsubs.push(store.subscribe(overrideKey(weekIdx,day), val=>{
-            const key=omKey(weekIdx,day);
-            if(val) try{setOverrides(p=>({...p,[key]:JSON.parse(val)}));}catch{}
-          }));
-        }
+        setDirty(false);
       }catch(e){ console.error(e); setSyncStatus("error"); }
       finally{ setLoading(false); }
     }
     init();
-    return ()=>unsubs.forEach(u=>u&&u());
-  },[weekIdx]);
-
-  const setSyncing=()=>setSyncStatus("syncing");
-  const setSynced=()=>setSyncStatus("synced");
-  const setErr=()=>setSyncStatus("error");
+  },[weekIdx,weeksReady]);
 
   const getOv=(wi,d)=>overrides[omKey(wi,d)]||{removed:[],added:[],slotOverrides:{}};
-  const updateOv=async(wi,d,updater)=>{
+  const updateOv=(wi,d,updater)=>{
     const prev=getOv(wi,d),next=updater(prev),key=omKey(wi,d);
     setOverrides(p=>({...p,[key]:next}));
-    setSyncing();
-    try{ await store.set(overrideKey(wi,d),JSON.stringify(next)); setSynced(); }catch{ setErr(); }
+    setDirty(true);
   };
 
-  const toggle=useCallback(async(day,id)=>{
-    setChecked(prev=>{
-      const s=new Set(prev[day]); s.has(id)?s.delete(id):s.add(id);
-      const next={...prev,[day]:s};
-      setSyncing();
-      store.set(checkedKey(weekIdx,day),JSON.stringify([...s])).then(setSynced).catch(setErr);
-      return next;
-    });
-  },[weekIdx]);
+  const toggle=useCallback((day,id)=>{
+    const s=new Set(checked[day]); s.has(id)?s.delete(id):s.add(id);
+    const next={...checked,[day]:s};
+    setChecked(next);
+    setDirty(true);
+  },[checked]);
 
   const handleNotes=(day,text)=>{
     setNotes(p=>({...p,[day]:text}));
-    // Debounce notes saves to avoid hammering Firestore on every keystroke
-    clearTimeout(notesDebounce.current[day]);
-    notesDebounce.current[day]=setTimeout(()=>{
-      setSyncing();
-      store.set(notesKey(weekIdx,day),text).then(setSynced).catch(setErr);
-    },800);
+    setDirty(true);
   };
 
-  const handleSaveRepeatingTask=async t=>{
-    const next=allTasks.find(x=>x.id===t.id)?allTasks.map(x=>x.id===t.id?t:x):[...allTasks,t];
-    setAllTasks(next); setSyncing();
-    try{ await store.set(TASKS_KEY,JSON.stringify(next)); setSynced(); }catch{ setErr(); }
-    if(!timeSlots.includes(t.time)){
-      const ns=[...timeSlots,t.time]; setTimeSlots(ns); setSyncing();
-      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); setSynced(); }catch{ setErr(); }
+  // Task save/delete with scope support — updates local state only, marks dirty
+  const applyTasksLocally=(startWi,endWi,updater)=>{
+    if(startWi<=weekIdx&&weekIdx<=endWi){
+      const next=updater(allTasks);
+      setAllTasks(next);
     }
-    setModal(null);
+    setDirty(true);
   };
-  const handleDeleteRepeatingTask=async id=>{
-    const next=allTasks.filter(x=>x.id!==id); setAllTasks(next); setSyncing();
-    try{ await store.set(TASKS_KEY,JSON.stringify(next)); setSynced(); }catch{ setErr(); }
-    setModal(null);
-  };
-  const handleSaveDayTask=async t=>{
-    await updateOv(weekIdx,activeDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==t.id),t]}));
+
+  const handleSaveTask=(t,scope)=>{
+    const updater=tasks=>tasks.find(x=>x.id===t.id)?tasks.map(x=>x.id===t.id?t:x):[...tasks,t];
+    const startWi=scope==="all"?0:weekIdx;
+    const endWi=scope==="this"?weekIdx:ALL_WEEKS.length-1;
+    applyTasksLocally(startWi,endWi,updater);
     if(!timeSlots.includes(t.time)){
       const ns=[...timeSlots,t.time]; setTimeSlots(ns);
-      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); }catch{}
+      setDirty(true);
     }
     setModal(null);
   };
-  const handleEditDayTask=async t=>{ await updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).map(x=>x.id===t.id?t:x)})); setModal(null); };
-  const handleToggleRemoveTask=async taskId=>{ await updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(taskId)?r.filter(x=>x!==taskId):[...r,taskId]};}); setModal(null); };
-  const handleDaySlotChange=async(taskId,newSlot)=>{
-    await updateOv(weekIdx,activeDay,prev=>({...prev,slotOverrides:{...(prev.slotOverrides||{}),[taskId]:newSlot}}));
+
+  const handleDeleteTask=(id,scope)=>{
+    const updater=tasks=>tasks.filter(x=>x.id!==id);
+    const startWi=scope==="all"?0:weekIdx;
+    const endWi=scope==="this"?weekIdx:ALL_WEEKS.length-1;
+    applyTasksLocally(startWi,endWi,updater);
+    setModal(null);
+  };
+
+  const handleSaveDayTask=t=>{
+    updateOv(weekIdx,activeDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==t.id),t]}));
+    if(!timeSlots.includes(t.time)){
+      const ns=[...timeSlots,t.time]; setTimeSlots(ns);
+      setDirty(true);
+    }
+    setModal(null);
+  };
+  const handleEditDayTask=t=>{ updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).map(x=>x.id===t.id?t:x)})); setModal(null); };
+  const handleToggleRemoveTask=taskId=>{ updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(taskId)?r.filter(x=>x!==taskId):[...r,taskId]};}); setModal(null); };
+  const handleDaySlotChange=(taskId,newSlot)=>{
+    updateOv(weekIdx,activeDay,prev=>({...prev,slotOverrides:{...(prev.slotOverrides||{}),[taskId]:newSlot}}));
     if(!timeSlots.includes(newSlot)){
       const ns=[...timeSlots,newSlot]; setTimeSlots(ns);
-      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); }catch{}
+      setDirty(true);
     }
     setModal(null);
   };
-  const handleSaveSlots=async list=>{ setTimeSlots(list); setSyncing(); try{ await store.set(SLOTS_KEY,JSON.stringify(list)); setSynced(); }catch{ setErr(); } setModal(null); };
-  const handleSaveDrive=async folder=>{ setDriveFolder(folder); setSyncing(); try{ await store.set(DRIVE_KEY,folder?JSON.stringify(folder):"null"); setSynced(); }catch{ setErr(); } setModal(null); };
+  const handleSaveSlots=list=>{ setTimeSlots(list); setDirty(true); setModal(null); };
+  const handleSaveDrive=folder=>{ setDriveFolder(folder); setDirty(true); setModal(null); };
+
+  const handleRefresh=async()=>{
+    setSyncStatus("loading");
+    try{
+      const [rawSlots,rawDrive]=await Promise.all([store.get(SLOTS_KEY),store.get(DRIVE_KEY)]);
+      if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
+      if(rawDrive&&rawDrive!=="null") try{setDriveFolder(JSON.parse(rawDrive));}catch{}
+
+      const rawTasks=await store.get(tasksKey(weekIdx));
+      if(rawTasks) try{setAllTasks(JSON.parse(rawTasks));}catch{}
+
+      const nc={},nn={},nov={};
+      for(const d of DAYS){
+        const [rawC,rawN,rawOv]=await Promise.all([
+          store.get(checkedKey(weekIdx,d)),
+          store.get(notesKey(weekIdx,d)),
+          store.get(overrideKey(weekIdx,d))
+        ]);
+        nc[d]=new Set(rawC?JSON.parse(rawC):[]);
+        nn[d]=rawN||"";
+        if(rawOv) try{nov[omKey(weekIdx,d)]=JSON.parse(rawOv);}catch{}
+      }
+      setChecked(nc); setNotes(nn); setOverrides(nov);
+      setDirty(false);
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
+  };
+
+  const handleSave=async()=>{
+    setSyncStatus("saving");
+    try{
+      await store.set(SLOTS_KEY,JSON.stringify(timeSlots));
+      await store.set(DRIVE_KEY,driveFolder?JSON.stringify(driveFolder):"null");
+      await store.set(tasksKey(weekIdx),JSON.stringify(allTasks));
+      for(const d of DAYS){
+        await store.set(checkedKey(weekIdx,d),JSON.stringify([...checked[d]]));
+        await store.set(notesKey(weekIdx,d),notes[d]||"");
+        const ov=overrides[omKey(weekIdx,d)];
+        if(ov) await store.set(overrideKey(weekIdx,d),JSON.stringify(ov));
+      }
+      setDirty(false);
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
+  };
+
+  const handleAddWeek=async(position)=>{
+    setSyncStatus("loading");
+    try{
+      let newRange;
+      if(position==="end"){
+        const lastSun=ALL_WEEKS[ALL_WEEKS.length-1].startSunday;
+        const nextSun=addWeeks(lastSun,1);
+        newRange={start:weekRange.start,end:nextSun};
+      } else {
+        const firstSun=ALL_WEEKS[0].startSunday;
+        const prevSun=addWeeks(firstSun,-1);
+        newRange={start:prevSun,end:weekRange.end};
+      }
+      await store.set(WEEK_RANGE_KEY,JSON.stringify({start:newRange.start.toISOString(),end:newRange.end.toISOString()}));
+      ALL_WEEKS.length=0;
+      generateWeeks(newRange.start,newRange.end).forEach(w=>ALL_WEEKS.push(w));
+      setWeekRange({...newRange});
+      // Preload the new week's tasks from the adjacent week
+      if(position==="end"){
+        const newWi=ALL_WEEKS.length-1;
+        const prev=await store.get(tasksKey(newWi-1));
+        const base=prev?JSON.parse(prev):DEFAULT_TASKS;
+        await store.set(tasksKey(newWi),JSON.stringify(base));
+      } else {
+        const prev=await store.get(tasksKey(1));
+        const base=prev?JSON.parse(prev):DEFAULT_TASKS;
+        await store.set(tasksKey(0),JSON.stringify(base));
+        setWeekIdx(wi=>wi+1);
+      }
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
+    setModal(null);
+  };
+
+  const handleRemoveWeek=async(wi)=>{
+    if(ALL_WEEKS.length<=1) return;
+    setSyncStatus("loading");
+    try{
+      let newRange;
+      if(wi===ALL_WEEKS.length-1){
+        const prevSun=ALL_WEEKS[wi-1].startSunday;
+        newRange={start:weekRange.start,end:prevSun};
+      } else {
+        const nextSun=ALL_WEEKS[1].startSunday;
+        newRange={start:nextSun,end:weekRange.end};
+      }
+      await store.set(WEEK_RANGE_KEY,JSON.stringify({start:newRange.start.toISOString(),end:newRange.end.toISOString()}));
+      ALL_WEEKS.length=0;
+      generateWeeks(newRange.start,newRange.end).forEach(w=>ALL_WEEKS.push(w));
+      setWeekRange({...newRange});
+      setWeekIdx(cur=>Math.min(cur,ALL_WEEKS.length-1));
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
+    setModal(null);
+  };
 
   const getDayTasks=d=>buildDayTasks(allTasks,d,getOv(weekIdx,d));
   const activeTasks=getDayTasks(activeDay);
@@ -748,7 +927,7 @@ function App(){
           </h1>
           <div style={{marginTop:6,display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)"}}>IAR Lead · Week of {ALL_WEEKS[weekIdx]?.label}</span>
-            <SyncDot status={syncStatus}/>
+            <SyncDot status={syncStatus} dirty={dirty}/>
           </div>
         </div>
         <ProgressRing pct={weekPct} size={72} stroke={5} color="#60A5FA" label="WEEK AVG"/>
@@ -788,6 +967,15 @@ function App(){
           <button key={v} className="bh" onClick={()=>setView(v)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${view===v?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.07)"}`,background:view===v?"rgba(96,165,250,0.1)":"transparent",color:view===v?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>{l}</button>
         ))}
         <div style={{flex:1}}/>
+        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.08)",color:syncStatus!=="idle"?"rgba(255,255,255,0.25)":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
+          {syncStatus==="loading"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
+          🔄 Refresh
+        </button>
+        <button className="bh" onClick={handleSave} disabled={!dirty||syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${dirty&&syncStatus==="idle"?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.05)"}`,background:dirty&&syncStatus==="idle"?"rgba(52,211,153,0.08)":"transparent",color:dirty&&syncStatus==="idle"?"#34D399":"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:dirty&&syncStatus==="idle"?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:4}}>
+          {syncStatus==="saving"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#A78BFA",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
+          💾 Save
+        </button>
+        <button className="bh" onClick={()=>setModal("weeks")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>📅 Weeks</button>
         <button className="bh" onClick={()=>setModal("slots")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⏱ Slots</button>
         <button className="bh" onClick={()=>setModal("drive")} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${driveFolder?"rgba(96,165,250,0.3)":"rgba(255,255,255,0.07)"}`,background:driveFolder?"rgba(96,165,250,0.08)":"transparent",color:driveFolder?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
           📁 {driveFolder?driveFolder.name:"Drive Folder"}
@@ -897,10 +1085,12 @@ function App(){
 
     {modal==="export"&&<ExportModal weekIdx={weekIdx} day={activeDay} tasks={activeTasks} checkedSet={checked[activeDay]||new Set()} notes={notes[activeDay]||""} driveFolder={driveFolder} onClose={()=>setModal(null)}/>}
     {modal==="slots"&&<SlotsModal slots={timeSlots} onSave={handleSaveSlots} onClose={()=>setModal(null)}/>}
+    {modal==="weeks"&&<WeeksModal weeks={ALL_WEEKS} weekIdx={weekIdx} onAddWeek={handleAddWeek} onRemoveWeek={handleRemoveWeek} onClose={()=>setModal(null)}/>}
     {modal==="drive"&&<DriveFolderModal currentFolder={driveFolder} onSave={handleSaveDrive} onClose={()=>setModal(null)}/>}
-    {modal==="newTask"&&<TaskModal allSlots={timeSlots} onSave={handleSaveRepeatingTask} onDelete={handleDeleteRepeatingTask} onClose={()=>setModal(null)}/>}
+    {modal==="newTask"&&<TaskModal allSlots={timeSlots} onSave={handleSaveTask} onDelete={handleDeleteTask} onClose={()=>setModal(null)}/>}
     {modal==="newDayTask"&&<DayTaskModal allSlots={timeSlots} day={activeDay} onSave={handleSaveDayTask} onClose={()=>setModal(null)}/>}
-    {modal?.editRepeatingTask&&<DayOverridePanel task={modal.editRepeatingTask} allSlots={timeSlots} override={ov} onRemoveTask={handleToggleRemoveTask} onChangeSlot={handleDaySlotChange} onClose={()=>setModal(null)}/>}
+    {modal?.editRepeatingTask&&<DayOverridePanel task={modal.editRepeatingTask} allSlots={timeSlots} override={ov} onRemoveTask={handleToggleRemoveTask} onChangeSlot={handleDaySlotChange} onEditTemplate={()=>setModal({editTaskTemplate:modal.editRepeatingTask})} onClose={()=>setModal(null)}/>}
+    {modal?.editTaskTemplate&&<TaskModal editTask={modal.editTaskTemplate} allSlots={timeSlots} onSave={handleSaveTask} onDelete={handleDeleteTask} onClose={()=>setModal(null)}/>}
     {modal?.editDayTask&&<DayTaskModal editTask={modal.editDayTask} allSlots={timeSlots} day={activeDay} onSave={handleEditDayTask} onClose={()=>setModal(null)}/>}
   </div>;
 }
