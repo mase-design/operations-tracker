@@ -13,8 +13,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:#060D08;color:#F0F0F0;font-family:'Outfit',sans-serif;}
-  ::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-thumb{background:#0d2414;border-radius:99px;}
+  body{background:#0A0C12;color:#F0F0F0;font-family:'Outfit',sans-serif;}
+  ::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-thumb{background:#1e2335;border-radius:99px;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
   @keyframes spin{to{transform:rotate(360deg)}}
   .bh:hover{opacity:0.75!important;}
@@ -276,7 +276,7 @@ async function uploadToDrive(content,filename,mime,token){
 
 // ── SYNC STATUS INDICATOR ──
 function SyncDot({status,dirty}){
-  const colors={idle:"#34D399",loading:"#FCD34D",saving:"#22C55E",error:"#EF4444",dirty:"#FB923C"};
+  const colors={idle:"#34D399",loading:"#FCD34D",saving:"#A78BFA",error:"#EF4444",dirty:"#FB923C"};
   const labels={idle:"All saved",loading:"Loading…",saving:"Saving…",error:"Error",dirty:"Unsaved changes"};
   const st=dirty?"dirty":status;
   return <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -288,12 +288,12 @@ function SyncDot({status,dirty}){
 }
 
 // ── PRIMITIVES ──
-function ProgressBar({pct,color="#22C55E",height=5}){
+function ProgressBar({pct,color="#60A5FA",height=5}){
   return <div style={{width:"100%",height,borderRadius:99,background:"rgba(255,255,255,0.07)",overflow:"hidden"}}>
     <div style={{width:`${pct}%`,height:"100%",background:pct===100?"linear-gradient(90deg,#059669,#34D399)":`linear-gradient(90deg,${color}bb,${color})`,borderRadius:99,transition:"width 0.5s"}}/>
   </div>;
 }
-function ProgressRing({pct,size=72,stroke=5,color="#22C55E",label}){
+function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label}){
   const r=(size-stroke)/2,circ=2*Math.PI*r;
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -312,7 +312,7 @@ function Modal({title,subtitle,onClose,children,maxWidth=500}){
     <div onClick={e=>e.stopPropagation()} style={{background:"#111420",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 40px 100px rgba(0,0,0,0.7)"}}>
       <div style={{padding:"20px 22px 14px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
-          {subtitle&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#22C55E",letterSpacing:"0.12em",marginBottom:5}}>{subtitle}</div>}
+          {subtitle&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#60A5FA",letterSpacing:"0.12em",marginBottom:5}}>{subtitle}</div>}
           <div style={{fontFamily:"Outfit",fontWeight:800,fontSize:20,color:"#F0F0F0"}}>{title}</div>
         </div>
         <button onClick={onClose} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,width:30,height:30,cursor:"pointer",color:"rgba(255,255,255,0.4)",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
@@ -365,13 +365,13 @@ function TaskModal({editTask,allSlots,onSave,onDelete,onClose}){
         {FREQ_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
       {freq==="custom"&&<div style={{display:"flex",gap:6,marginTop:9}}>
-        {DAYS.map(d=><button key={d} onClick={()=>toggleDay(d)} style={{flex:1,padding:"6px 4px",borderRadius:7,cursor:"pointer",border:`1px solid ${customDays.includes(d)?"#22C55E":"rgba(255,255,255,0.1)"}`,background:customDays.includes(d)?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.03)",color:customDays.includes(d)?"#86EFAC":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:12}}>{d}</button>)}
+        {DAYS.map(d=><button key={d} onClick={()=>toggleDay(d)} style={{flex:1,padding:"6px 4px",borderRadius:7,cursor:"pointer",border:`1px solid ${customDays.includes(d)?"#60A5FA":"rgba(255,255,255,0.1)"}`,background:customDays.includes(d)?"rgba(96,165,250,0.15)":"rgba(255,255,255,0.03)",color:customDays.includes(d)?"#93C5FD":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:12}}>{d}</button>)}
       </div>}
     </FormRow>
     {!isNew&&<FormRow label="APPLY CHANGES TO">
       <div style={{display:"flex",gap:6}}>
         {[["this","This week"],["future","This + future"],["all","All weeks"]].map(([v,l])=>(
-          <button key={v} onClick={()=>setScope(v)} style={{flex:1,padding:"7px 4px",borderRadius:7,border:`1px solid ${scope===v?"#22C55E":"rgba(255,255,255,0.08)"}`,background:scope===v?"rgba(34,197,94,0.12)":"rgba(255,255,255,0.025)",color:scope===v?"#86EFAC":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:11.5,cursor:"pointer"}}>{l}</button>
+          <button key={v} onClick={()=>setScope(v)} style={{flex:1,padding:"7px 4px",borderRadius:7,border:`1px solid ${scope===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:scope===v?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.025)",color:scope===v?"#93C5FD":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:11.5,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
     </FormRow>}
@@ -383,7 +383,7 @@ function TaskModal({editTask,allSlots,onSave,onDelete,onClose}){
       </>}
       {!confirmDel&&<>
         <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
-        <button onClick={handleSave} disabled={!label.trim()} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:label.trim()?"pointer":"not-allowed",border:"none",background:label.trim()?"linear-gradient(135deg,#15803D,#22C55E)":"rgba(255,255,255,0.05)",color:label.trim()?"#fff":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>{isNew?"Add Task":"Save Changes"}</button>
+        <button onClick={handleSave} disabled={!label.trim()} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:label.trim()?"pointer":"not-allowed",border:"none",background:label.trim()?"linear-gradient(135deg,#1D4ED8,#3B82F6)":"rgba(255,255,255,0.05)",color:label.trim()?"#fff":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>{isNew?"Add Task":"Save Changes"}</button>
       </>}
     </div>
   </Modal>;
@@ -450,7 +450,7 @@ function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,on
     </FormRow>
     <div style={{display:"flex",gap:9,marginTop:6,flexWrap:"wrap"}}>
       <button onClick={()=>onRemoveTask(t.id)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>{isRemoved?"Restore task":"Remove today"}</button>
-      <button onClick={onEditTemplate} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(45,212,191,0.3)",background:"rgba(45,212,191,0.07)",color:"#5EEAD4",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Edit template…</button>
+      <button onClick={onEditTemplate} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.07)",color:"#C4B5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Edit template…</button>
       <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
       <button onClick={handleSlotSave} style={{flex:1.4,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#d97706,#f59e0b)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save for Today</button>
     </div>
@@ -472,7 +472,7 @@ function SlotsModal({slots,onSave,onClose}){
         <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:9,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)"}}>
           {editIdx===i?<>
             <input style={{...IS,flex:1,padding:"5px 9px"}} value={editVal} onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&commitEdit()} autoFocus/>
-            <button onClick={commitEdit} style={{padding:"4px 10px",borderRadius:7,background:"rgba(34,197,94,0.15)",border:"1px solid rgba(34,197,94,0.3)",color:"#86EFAC",cursor:"pointer",fontFamily:"Outfit",fontSize:12,fontWeight:600}}>Save</button>
+            <button onClick={commitEdit} style={{padding:"4px 10px",borderRadius:7,background:"rgba(96,165,250,0.15)",border:"1px solid rgba(96,165,250,0.3)",color:"#93C5FD",cursor:"pointer",fontFamily:"Outfit",fontSize:12,fontWeight:600}}>Save</button>
           </>:<>
             <span style={{flex:1,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"rgba(255,255,255,0.6)"}}>{s}</span>
             <button onClick={()=>startEdit(i)} style={{padding:"3px 9px",borderRadius:7,background:"transparent",border:"1px solid rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontFamily:"Outfit",fontSize:11}}>Edit</button>
@@ -483,11 +483,11 @@ function SlotsModal({slots,onSave,onClose}){
     </div>
     <div style={{display:"flex",gap:8}}>
       <input style={{...IS,flex:1}} value={newSlot} onChange={e=>setNewSlot(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addSlot()} placeholder="e.g. 3:00 – 3:30 PM"/>
-      <button onClick={addSlot} style={{padding:"9px 14px",borderRadius:9,background:"rgba(34,197,94,0.12)",border:"1px solid rgba(34,197,94,0.25)",color:"#86EFAC",cursor:"pointer",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Add</button>
+      <button onClick={addSlot} style={{padding:"9px 14px",borderRadius:9,background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.25)",color:"#93C5FD",cursor:"pointer",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Add</button>
     </div>
     <div style={{display:"flex",gap:9,marginTop:14}}>
       <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
-      <button onClick={()=>onSave(list)} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#15803D,#22C55E)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save Slots</button>
+      <button onClick={()=>onSave(list)} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#1D4ED8,#3B82F6)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save Slots</button>
     </div>
   </Modal>;
 }
@@ -529,19 +529,19 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
   };
   const handleCopy=()=>{navigator.clipboard.writeText(content).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
   const uploadLabel=dlState==="authing"?"Connecting…":dlState==="uploading"?"Uploading…":dlState==="done"?"✓ Uploaded!":"Upload to Drive";
-  const uploadBg=dlState==="done"?"linear-gradient(135deg,#065f46,#34D399)":dlState==="error"?"linear-gradient(135deg,#7f1d1d,#ef4444)":"linear-gradient(135deg,#15803D,#22C55E)";
+  const uploadBg=dlState==="done"?"linear-gradient(135deg,#065f46,#34D399)":dlState==="error"?"linear-gradient(135deg,#7f1d1d,#ef4444)":"linear-gradient(135deg,#1D4ED8,#3B82F6)";
   return <Modal title={`Export — ${DAY_FULL[day]}`} subtitle="EXPORT DAY SUMMARY" onClose={onClose} maxWidth={480}>
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
         <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>COMPLETION</span>
-        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:pct===100?"#34D399":pct>=50?"#22C55E":"#F472B6"}}>{pct}%  ·  {done}/{tasks.length}</span>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:pct===100?"#34D399":pct>=50?"#60A5FA":"#F472B6"}}>{pct}%  ·  {done}/{tasks.length}</span>
       </div>
       <ProgressBar pct={pct}/>
     </div>
     <FormRow label="FORMAT">
       <div style={{display:"flex",gap:8}}>
         {[["csv","Spreadsheet (.csv)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
-          <button key={v} onClick={()=>setFmt(v)} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?"#22C55E":"rgba(255,255,255,0.08)"}`,background:fmt===v?"rgba(34,197,94,0.1)":"rgba(255,255,255,0.02)",color:fmt===v?"#86EFAC":"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
+          <button key={v} onClick={()=>setFmt(v)} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:fmt===v?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.02)",color:fmt===v?"#93C5FD":"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
       {fmt==="csv"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Columns: Start Time · Task · Completed (TRUE/FALSE)</div>}
@@ -556,7 +556,7 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
     {dlState==="error"&&<div style={{padding:"9px 13px",borderRadius:9,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",marginBottom:12,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FCA5A5"}}>{errorMsg}</div>}
     <div style={{display:"flex",gap:9}}>
       <button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
-      <button onClick={handleDownload} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(34,197,94,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(34,197,94,0.08)",color:downloaded?"#34D399":"#86EFAC",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
+      <button onClick={handleDownload} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
       <button onClick={handleUpload} disabled={["authing","uploading"].includes(dlState)}
         style={{flex:1.6,padding:"11px 0",borderRadius:10,border:"none",background:uploadBg,color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:13,cursor:["authing","uploading"].includes(dlState)?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,transition:"background 0.3s"}}>
         {["authing","uploading"].includes(dlState)&&<span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>}
@@ -588,17 +588,17 @@ function WeeksModal({weeks,weekIdx,onAddWeek,onRemoveWeek,onClose}){
   const [confirm,setConfirm]=useState(null);
   return <Modal title="Manage weeks" subtitle="WEEKS" onClose={onClose} maxWidth={520}>
     <div style={{display:"flex",gap:8,marginBottom:14}}>
-      <button onClick={()=>onAddWeek("before")} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(34,197,94,0.3)",background:"rgba(34,197,94,0.07)",color:"#86EFAC",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>← Add week before</button>
+      <button onClick={()=>onAddWeek("before")} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(96,165,250,0.3)",background:"rgba(96,165,250,0.07)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>← Add week before</button>
       <button onClick={()=>onAddWeek("end")} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.07)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>Add week after →</button>
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:360,overflowY:"auto",marginBottom:14}}>
       {weeks.map((w,i)=>{
         const isCur=i===getCurrentWeekIdx(),isSel=i===weekIdx,canRemove=(i===0||i===weeks.length-1)&&weeks.length>1;
-        return <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:isSel?"rgba(34,197,94,0.08)":"rgba(255,255,255,0.02)",border:`1px solid ${isSel?"rgba(34,197,94,0.25)":isCur?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.06)"}`}}>
+        return <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:isSel?"rgba(96,165,250,0.08)":"rgba(255,255,255,0.02)",border:`1px solid ${isSel?"rgba(96,165,250,0.25)":isCur?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.06)"}`}}>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:7}}>
-            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:isSel?"#86EFAC":isCur?"#34D399":"rgba(255,255,255,0.45)"}}>{w.label}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:isSel?"#93C5FD":isCur?"#34D399":"rgba(255,255,255,0.45)"}}>{w.label}</span>
             {isCur&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#34D399",background:"#34D39914",padding:"1px 6px",borderRadius:99}}>CURRENT</span>}
-            {isSel&&!isCur&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#86EFAC",background:"rgba(34,197,94,0.1)",padding:"1px 6px",borderRadius:99}}>VIEWING</span>}
+            {isSel&&!isCur&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#93C5FD",background:"rgba(96,165,250,0.1)",padding:"1px 6px",borderRadius:99}}>VIEWING</span>}
           </div>
           {canRemove&&(confirm?.wi===i
             ?<div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -893,30 +893,30 @@ function App(){
   const activePct=dayPct(activeDay);
   const isDayOnlyAdded=t=>(ov.added||[]).some(x=>x.id===t.id);
 
-  return <div style={{minHeight:"100vh",background:"#060D08",backgroundImage:"radial-gradient(ellipse 80% 50% at 50% -10%, rgba(5,46,22,0.55) 0%, transparent 60%)",color:"#F0F0F0",fontFamily:"Outfit",paddingBottom:80}}>
+  return <div style={{minHeight:"100vh",background:"#0A0C12",backgroundImage:"radial-gradient(ellipse 80% 50% at 50% -10%, rgba(30,58,138,0.35) 0%, transparent 60%)",color:"#F0F0F0",fontFamily:"Outfit",paddingBottom:80}}>
 
     <div style={{maxWidth:900,margin:"0 auto",padding:"28px 20px 0"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
         <div>
-          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#4ADE80",letterSpacing:"0.14em",marginBottom:7,opacity:0.8}}>CORNERSTONE HEALING CENTER · PHX OUTPATIENT</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#60A5FA",letterSpacing:"0.14em",marginBottom:7,opacity:0.8}}>CORNERSTONE HEALING CENTER · PHX OUTPATIENT</div>
           <h1 style={{fontSize:26,fontWeight:900,letterSpacing:"-0.03em",lineHeight:1.15,color:"#fff"}}>
-            Mason's <span style={{background:"linear-gradient(90deg,#22C55E,#2DD4BF)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Operations Tracker</span>
+            Mason's <span style={{background:"linear-gradient(90deg,#60A5FA,#A78BFA)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Operations Tracker</span>
           </h1>
           <div style={{marginTop:6,display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)"}}>IAR Lead · Week of {ALL_WEEKS[weekIdx]?.label}</span>
             <SyncDot status={syncStatus} dirty={dirty}/>
           </div>
         </div>
-        <ProgressRing pct={weekPct} size={72} stroke={5} color="#22C55E" label="WEEK AVG"/>
+        <ProgressRing pct={weekPct} size={72} stroke={5} color="#60A5FA" label="WEEK AVG"/>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:22}}>
         {[
-          {label:"TASKS DONE",value:`${completedWeekTasks}`,sub:`of ${totalWeekTasks} this week`,color:"#22C55E",icon:"✅"},
-          {label:"WEEK PROGRESS",value:`${weekPct}%`,sub:`${daysCompleted} of 5 days complete`,color:weekPct===100?"#34D399":"#2DD4BF",icon:"📈"},
+          {label:"TASKS DONE",value:`${completedWeekTasks}`,sub:`of ${totalWeekTasks} this week`,color:"#60A5FA",icon:"✅"},
+          {label:"WEEK PROGRESS",value:`${weekPct}%`,sub:`${daysCompleted} of 5 days complete`,color:weekPct===100?"#34D399":"#A78BFA",icon:"📈"},
           {label:"TODAY",value:isCurrentWeek&&DAYS.includes(todayDay)?`${dayPct(todayDay)}%`:"—",sub:isCurrentWeek&&DAYS.includes(todayDay)?`${checked[todayDay]?.size||0}/${getDayTasks(todayDay).length} tasks`:"off day",color:"#34D399",icon:"🎯"},
         ].map(c=>(
-          <div key={c.label} style={{background:"rgba(34,197,94,0.04)",border:"1px solid rgba(34,197,94,0.12)",borderRadius:14,padding:"14px 16px"}}>
+          <div key={c.label} style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em"}}>{c.label}</div>
               <span style={{fontSize:14}}>{c.icon}</span>
@@ -930,7 +930,7 @@ function App(){
       <div style={{display:"flex",gap:5,marginTop:16,overflowX:"auto",paddingBottom:3}}>
         {ALL_WEEKS.map((w,i)=>{
           const isCur=getCurrentWeekIdx()===i,isSel=i===weekIdx;
-          return <button key={i} className="bh" onClick={()=>setWeekIdx(i)} style={{padding:"5px 12px",borderRadius:99,flexShrink:0,border:`1px solid ${isSel?"rgba(34,197,94,0.5)":"rgba(255,255,255,0.07)"}`,background:isSel?"rgba(34,197,94,0.12)":"transparent",color:isSel?"#86EFAC":"rgba(255,255,255,0.32)",fontFamily:"'JetBrains Mono',monospace",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+          return <button key={i} className="bh" onClick={()=>setWeekIdx(i)} style={{padding:"5px 12px",borderRadius:99,flexShrink:0,border:`1px solid ${isSel?"rgba(96,165,250,0.5)":"rgba(255,255,255,0.07)"}`,background:isSel?"rgba(96,165,250,0.12)":"transparent",color:isSel?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"'JetBrains Mono',monospace",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
             {isCur&&<span style={{width:6,height:6,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
             {w.label}
           </button>;
@@ -941,32 +941,32 @@ function App(){
     <div style={{maxWidth:900,margin:"18px auto 0",padding:"0 20px"}}>
       <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
         {[["day","Day View"],["week","Week Overview"]].map(([v,l])=>(
-          <button key={v} className="bh" onClick={()=>setView(v)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${view===v?"rgba(34,197,94,0.4)":"rgba(255,255,255,0.07)"}`,background:view===v?"rgba(34,197,94,0.1)":"transparent",color:view===v?"#86EFAC":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>{l}</button>
+          <button key={v} className="bh" onClick={()=>setView(v)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${view===v?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.07)"}`,background:view===v?"rgba(96,165,250,0.1)":"transparent",color:view===v?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>{l}</button>
         ))}
         <div style={{flex:1}}/>
-        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(34,197,94,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(34,197,94,0.08)",color:syncStatus!=="idle"?"rgba(255,255,255,0.25)":"#86EFAC",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
+        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.08)",color:syncStatus!=="idle"?"rgba(255,255,255,0.25)":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
           {syncStatus==="loading"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
           🔄 Refresh
         </button>
         <button className="bh" onClick={handleSave} disabled={!dirty||syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${dirty&&syncStatus==="idle"?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.05)"}`,background:dirty&&syncStatus==="idle"?"rgba(52,211,153,0.08)":"transparent",color:dirty&&syncStatus==="idle"?"#34D399":"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:dirty&&syncStatus==="idle"?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:4}}>
-          {syncStatus==="saving"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#22C55E",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
+          {syncStatus==="saving"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#A78BFA",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
           💾 Save
         </button>
         <button className="bh" onClick={()=>setModal("weeks")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>📅 Weeks</button>
         <button className="bh" onClick={()=>setModal("slots")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⏱ Slots</button>
       </div>
 
-      <div style={{display:"flex",gap:4,background:"rgba(34,197,94,0.04)",border:"1px solid rgba(34,197,94,0.12)",borderRadius:14,padding:4}}>
+      <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:4}}>
         {DAYS.map(d=>{
           const pct=dayPct(d),isToday=isCurrentWeek&&d===todayDay,isActive=d===activeDay;
           const ov2=getOv(weekIdx,d);
           const hasOv=((ov2.removed||[]).length>0||(ov2.added||[]).length>0||Object.keys(ov2.slotOverrides||{}).length>0);
-          return <button key={d} className="bh" onClick={()=>{setActiveDay(d);setView("day");}} style={{flex:1,padding:"10px 4px 8px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?"rgba(34,197,94,0.12)":"transparent",outline:isActive?"1px solid rgba(34,197,94,0.25)":"none",opacity:isActive?1:0.45,position:"relative"}}>
+          return <button key={d} className="bh" onClick={()=>{setActiveDay(d);setView("day");}} style={{flex:1,padding:"10px 4px 8px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?"rgba(96,165,250,0.12)":"transparent",outline:isActive?"1px solid rgba(96,165,250,0.25)":"none",opacity:isActive?1:0.45,position:"relative"}}>
             {hasOv&&<span style={{position:"absolute",top:6,right:8,width:5,height:5,borderRadius:"50%",background:"#FB923C"}}/>}
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
               <div style={{display:"flex",alignItems:"center",gap:4}}>
                 {isToday&&<span style={{width:6,height:6,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
-                <span style={{fontFamily:"Outfit",fontWeight:700,fontSize:13,color:isActive?"#86EFAC":"#CCC"}}>{d}</span>
+                <span style={{fontFamily:"Outfit",fontWeight:700,fontSize:13,color:isActive?"#93C5FD":"#CCC"}}>{d}</span>
               </div>
               <ProgressBar pct={pct} height={3}/>
               <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:pct===100?"#34D399":"rgba(255,255,255,0.28)"}}>{pct}%</span>
@@ -980,7 +980,7 @@ function App(){
       <div style={{maxWidth:900,margin:"18px auto 0",padding:"0 20px",display:"flex",flexDirection:"column",gap:10}}>
         {DAYS.map(d=>{
           const pct=dayPct(d),isToday=isCurrentWeek&&d===todayDay,dt=getDayTasks(d);
-          return <div key={d} onClick={()=>{setActiveDay(d);setView("day");}} style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${pct===100?"rgba(52,211,153,0.2)":isToday?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.07)"}`,borderRadius:14,padding:"14px 16px",cursor:"pointer"}}>
+          return <div key={d} onClick={()=>{setActiveDay(d);setView("day");}} style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${pct===100?"rgba(52,211,153,0.2)":isToday?"rgba(96,165,250,0.2)":"rgba(255,255,255,0.07)"}`,borderRadius:14,padding:"14px 16px",cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontWeight:700,fontSize:16}}>{DAY_FULL[d]}</span>
@@ -1006,7 +1006,7 @@ function App(){
             <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"rgba(255,255,255,0.3)"}}>{checked[activeDay]?.size||0}/{activeTasks.length}</span>
             <button className="bh" onClick={()=>setModal("newDayTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.22)",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Today Only</button>
             <button className="bh" onClick={()=>setModal("newTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.22)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Repeating</button>
-            <button className="bh" onClick={()=>setModal("export")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.22)",color:"#86EFAC",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⬇ Export</button>
+            <button className="bh" onClick={()=>setModal("export")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.22)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⬇ Export</button>
             {(checked[activeDay]?.size||0)>0&&<button className="bh" onClick={async()=>{setChecked(p=>({...p,[activeDay]:new Set()}));setSyncing();try{await store.set(checkedKey(weekIdx,activeDay),"[]");setSynced();}catch{setErr();}}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:500,fontSize:12,cursor:"pointer"}}>Reset</button>}
           </div>
         </div>
