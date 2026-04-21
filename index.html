@@ -275,14 +275,15 @@ async function uploadToDrive(content,filename,mime,folderId,token){
 }
 
 // ── SYNC STATUS INDICATOR ──
-function SyncDot({status}){
-  const colors={synced:"#34D399",syncing:"#FCD34D",error:"#EF4444",offline:"#6B7280"};
-  const labels={synced:"Synced",syncing:"Syncing…",error:"Sync error",offline:"Offline"};
+function SyncDot({status,dirty}){
+  const colors={idle:"#34D399",loading:"#FCD34D",saving:"#A78BFA",error:"#EF4444",dirty:"#FB923C"};
+  const labels={idle:"All saved",loading:"Loading…",saving:"Saving…",error:"Error",dirty:"Unsaved changes"};
+  const st=dirty?"dirty":status;
   return <div style={{display:"flex",alignItems:"center",gap:5}}>
-    <span style={{width:7,height:7,borderRadius:"50%",background:colors[status]||colors.offline,
-      boxShadow:status==="syncing"?`0 0 0 3px ${colors.syncing}33`:"none",
-      animation:status==="syncing"?"pulse 1s infinite":"none"}}/>
-    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{labels[status]||"Offline"}</span>
+    <span style={{width:7,height:7,borderRadius:"50%",background:colors[st]||colors.idle,
+      boxShadow:(st==="loading"||st==="saving")?`0 0 0 3px ${colors[st]}33`:"none",
+      animation:(st==="loading"||st==="saving"||st==="dirty")?"pulse 1s infinite":"none"}}/>
+    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)"}}>{labels[st]||"Unknown"}</span>
   </div>;
 }
 
@@ -645,13 +646,13 @@ function App(){
   const [checked,setChecked]=useState({Mon:new Set(),Tue:new Set(),Wed:new Set(),Thu:new Set(),Fri:new Set()});
   const [notes,setNotes]=useState({Mon:"",Tue:"",Wed:"",Thu:"",Fri:""});
   const [loading,setLoading]=useState(true);
-  const [syncStatus,setSyncStatus]=useState("syncing");
+  const [dirty,setDirty]=useState(false);
+  const [syncStatus,setSyncStatus]=useState("idle");
   const [modal,setModal]=useState(null);
   const [view,setView]=useState("day");
   const todayDay=getTodayDayName();
   const isCurrentWeek=weekIdx===getCurrentWeekIdx();
   const omKey=(wi,d)=>`${wi}_${d}`;
-  const notesDebounce=useRef({});
 
   // ── WEEK RANGE INIT (once) ──
   useEffect(()=>{
@@ -682,12 +683,11 @@ function App(){
     loadRange();
   },[]);
 
-  // ── PER-WEEK DATA LOAD ──
+  // ── PER-WEEK DATA LOAD (on weekIdx change) ──
   useEffect(()=>{
     if(!weeksReady) return;
-    let unsubs=[];
     async function init(){
-      setLoading(true); setSyncStatus("syncing");
+      setLoading(true);
       try{
         const [rawSlots,rawDrive]=await Promise.all([store.get(SLOTS_KEY),store.get(DRIVE_KEY)]);
         if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
@@ -716,123 +716,134 @@ function App(){
           if(rawOv) try{nov[omKey(weekIdx,d)]=JSON.parse(rawOv);}catch{}
         }
         setChecked(nc); setNotes(nn); setOverrides(nov);
-        setSyncStatus("synced");
-
-        // Real-time subscriptions
-        unsubs.push(store.subscribe(tasksKey(weekIdx), val=>{ if(val) try{setAllTasks(JSON.parse(val));}catch{} }));
-        unsubs.push(store.subscribe(SLOTS_KEY, val=>{ if(val) try{setTimeSlots(JSON.parse(val));}catch{} }));
-        unsubs.push(store.subscribe(DRIVE_KEY, val=>{ if(val&&val!=="null") try{setDriveFolder(JSON.parse(val));}catch{} else setDriveFolder(null); }));
-        for(const d of DAYS){
-          const day=d;
-          unsubs.push(store.subscribe(checkedKey(weekIdx,day), val=>{
-            if(val) setChecked(p=>({...p,[day]:new Set(JSON.parse(val))}));
-          }));
-          unsubs.push(store.subscribe(notesKey(weekIdx,day), val=>{
-            setNotes(p=>({...p,[day]:val||""}));
-          }));
-          unsubs.push(store.subscribe(overrideKey(weekIdx,day), val=>{
-            const key=omKey(weekIdx,day);
-            if(val) try{setOverrides(p=>({...p,[key]:JSON.parse(val)}));}catch{}
-          }));
-        }
+        setDirty(false);
       }catch(e){ console.error(e); setSyncStatus("error"); }
       finally{ setLoading(false); }
     }
     init();
-    return ()=>unsubs.forEach(u=>u&&u());
   },[weekIdx,weeksReady]);
 
-  const setSyncing=()=>setSyncStatus("syncing");
-  const setSynced=()=>setSyncStatus("synced");
-  const setErr=()=>setSyncStatus("error");
-
   const getOv=(wi,d)=>overrides[omKey(wi,d)]||{removed:[],added:[],slotOverrides:{}};
-  const updateOv=async(wi,d,updater)=>{
+  const updateOv=(wi,d,updater)=>{
     const prev=getOv(wi,d),next=updater(prev),key=omKey(wi,d);
     setOverrides(p=>({...p,[key]:next}));
-    setSyncing();
-    try{ await store.set(overrideKey(wi,d),JSON.stringify(next)); setSynced(); }catch{ setErr(); }
+    setDirty(true);
   };
 
-  const toggle=useCallback(async(day,id)=>{
+  const toggle=useCallback((day,id)=>{
     const s=new Set(checked[day]); s.has(id)?s.delete(id):s.add(id);
     const next={...checked,[day]:s};
     setChecked(next);
-    setSyncing();
-    store.set(checkedKey(weekIdx,day),JSON.stringify([...s])).then(setSynced).catch(setErr);
-  },[weekIdx,checked]);
+    setDirty(true);
+  },[checked]);
 
   const handleNotes=(day,text)=>{
     setNotes(p=>({...p,[day]:text}));
-    clearTimeout(notesDebounce.current[day]);
-    notesDebounce.current[day]=setTimeout(()=>{
-      setSyncing();
-      store.set(notesKey(weekIdx,day),text).then(setSynced).catch(setErr);
-    },800);
+    setDirty(true);
   };
 
-  // Apply task save/delete across a range of week indices based on scope
-  const applyTaskAcrossWeeks=async(startWi,endWi,currentTasks,updater)=>{
-    for(let wi=startWi;wi<=endWi;wi++){
-      let tasks=wi===weekIdx?currentTasks:null;
-      if(!tasks){ const raw=await store.get(tasksKey(wi)); tasks=raw?JSON.parse(raw):DEFAULT_TASKS; }
-      const next=updater(tasks);
-      if(wi===weekIdx) setAllTasks(next);
-      await store.set(tasksKey(wi),JSON.stringify(next));
+  // Task save/delete with scope support — updates local state only, marks dirty
+  const applyTasksLocally=(startWi,endWi,updater)=>{
+    if(startWi<=weekIdx&&weekIdx<=endWi){
+      const next=updater(allTasks);
+      setAllTasks(next);
     }
+    setDirty(true);
   };
 
-  const handleSaveTask=async(t,scope)=>{
-    setSyncing();
-    try{
-      const updater=tasks=>tasks.find(x=>x.id===t.id)?tasks.map(x=>x.id===t.id?t:x):[...tasks,t];
-      const startWi=scope==="all"?0:weekIdx;
-      const endWi=scope==="this"?weekIdx:ALL_WEEKS.length-1;
-      await applyTaskAcrossWeeks(startWi,endWi,allTasks,updater);
-      if(!timeSlots.includes(t.time)){
-        const ns=[...timeSlots,t.time]; setTimeSlots(ns);
-        await store.set(SLOTS_KEY,JSON.stringify(ns));
-      }
-      setSynced();
-    }catch{ setErr(); }
-    setModal(null);
-  };
-
-  const handleDeleteTask=async(id,scope)=>{
-    setSyncing();
-    try{
-      const updater=tasks=>tasks.filter(x=>x.id!==id);
-      const startWi=scope==="all"?0:weekIdx;
-      const endWi=scope==="this"?weekIdx:ALL_WEEKS.length-1;
-      await applyTaskAcrossWeeks(startWi,endWi,allTasks,updater);
-      setSynced();
-    }catch{ setErr(); }
-    setModal(null);
-  };
-
-  const handleSaveDayTask=async t=>{
-    await updateOv(weekIdx,activeDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==t.id),t]}));
+  const handleSaveTask=(t,scope)=>{
+    const updater=tasks=>tasks.find(x=>x.id===t.id)?tasks.map(x=>x.id===t.id?t:x):[...tasks,t];
+    const startWi=scope==="all"?0:weekIdx;
+    const endWi=scope==="this"?weekIdx:ALL_WEEKS.length-1;
+    applyTasksLocally(startWi,endWi,updater);
     if(!timeSlots.includes(t.time)){
       const ns=[...timeSlots,t.time]; setTimeSlots(ns);
-      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); }catch{}
+      setDirty(true);
     }
     setModal(null);
   };
-  const handleEditDayTask=async t=>{ await updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).map(x=>x.id===t.id?t:x)})); setModal(null); };
-  const handleToggleRemoveTask=async taskId=>{ await updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(taskId)?r.filter(x=>x!==taskId):[...r,taskId]};}); setModal(null); };
-  const handleDaySlotChange=async(taskId,newSlot)=>{
-    await updateOv(weekIdx,activeDay,prev=>({...prev,slotOverrides:{...(prev.slotOverrides||{}),[taskId]:newSlot}}));
+
+  const handleDeleteTask=(id,scope)=>{
+    const updater=tasks=>tasks.filter(x=>x.id!==id);
+    const startWi=scope==="all"?0:weekIdx;
+    const endWi=scope==="this"?weekIdx:ALL_WEEKS.length-1;
+    applyTasksLocally(startWi,endWi,updater);
+    setModal(null);
+  };
+
+  const handleSaveDayTask=t=>{
+    updateOv(weekIdx,activeDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==t.id),t]}));
+    if(!timeSlots.includes(t.time)){
+      const ns=[...timeSlots,t.time]; setTimeSlots(ns);
+      setDirty(true);
+    }
+    setModal(null);
+  };
+  const handleEditDayTask=t=>{ updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).map(x=>x.id===t.id?t:x)})); setModal(null); };
+  const handleToggleRemoveTask=taskId=>{ updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(taskId)?r.filter(x=>x!==taskId):[...r,taskId]};}); setModal(null); };
+  const handleDaySlotChange=(taskId,newSlot)=>{
+    updateOv(weekIdx,activeDay,prev=>({...prev,slotOverrides:{...(prev.slotOverrides||{}),[taskId]:newSlot}}));
     if(!timeSlots.includes(newSlot)){
       const ns=[...timeSlots,newSlot]; setTimeSlots(ns);
-      try{ await store.set(SLOTS_KEY,JSON.stringify(ns)); }catch{}
+      setDirty(true);
     }
     setModal(null);
   };
-  const handleSaveSlots=async list=>{ setTimeSlots(list); setSyncing(); try{ await store.set(SLOTS_KEY,JSON.stringify(list)); setSynced(); }catch{ setErr(); } setModal(null); };
-  const handleSaveDrive=async folder=>{ setDriveFolder(folder); setSyncing(); try{ await store.set(DRIVE_KEY,folder?JSON.stringify(folder):"null"); setSynced(); }catch{ setErr(); } setModal(null); };
+  const handleSaveSlots=list=>{ setTimeSlots(list); setDirty(true); setModal(null); };
+  const handleSaveDrive=folder=>{ setDriveFolder(folder); setDirty(true); setModal(null); };
+
+  const handleRefresh=async()=>{
+    setSyncStatus("loading");
+    try{
+      const [rawSlots,rawDrive]=await Promise.all([store.get(SLOTS_KEY),store.get(DRIVE_KEY)]);
+      if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
+      if(rawDrive&&rawDrive!=="null") try{setDriveFolder(JSON.parse(rawDrive));}catch{}
+
+      const rawTasks=await store.get(tasksKey(weekIdx));
+      if(rawTasks) try{setAllTasks(JSON.parse(rawTasks));}catch{}
+
+      const nc={},nn={},nov={};
+      for(const d of DAYS){
+        const [rawC,rawN,rawOv]=await Promise.all([
+          store.get(checkedKey(weekIdx,d)),
+          store.get(notesKey(weekIdx,d)),
+          store.get(overrideKey(weekIdx,d))
+        ]);
+        nc[d]=new Set(rawC?JSON.parse(rawC):[]);
+        nn[d]=rawN||"";
+        if(rawOv) try{nov[omKey(weekIdx,d)]=JSON.parse(rawOv);}catch{}
+      }
+      setChecked(nc); setNotes(nn); setOverrides(nov);
+      setDirty(false);
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
+  };
+
+  const handleSave=async()=>{
+    setSyncStatus("saving");
+    try{
+      await store.set(SLOTS_KEY,JSON.stringify(timeSlots));
+      await store.set(DRIVE_KEY,driveFolder?JSON.stringify(driveFolder):"null");
+      await store.set(tasksKey(weekIdx),JSON.stringify(allTasks));
+      for(const d of DAYS){
+        await store.set(checkedKey(weekIdx,d),JSON.stringify([...checked[d]]));
+        await store.set(notesKey(weekIdx,d),notes[d]||"");
+        const ov=overrides[omKey(weekIdx,d)];
+        if(ov) await store.set(overrideKey(weekIdx,d),JSON.stringify(ov));
+      }
+      setDirty(false);
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
+  };
 
   const handleAddWeek=async(position)=>{
-    setSyncing();
+    setSyncStatus("loading");
     try{
       let newRange;
       if(position==="end"){
@@ -858,16 +869,19 @@ function App(){
         const prev=await store.get(tasksKey(1));
         const base=prev?JSON.parse(prev):DEFAULT_TASKS;
         await store.set(tasksKey(0),JSON.stringify(base));
-        setWeekIdx(wi=>wi+1); // shift current index since weeks shifted right
+        setWeekIdx(wi=>wi+1);
       }
-      setSynced();
-    }catch{ setErr(); }
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
     setModal(null);
   };
 
   const handleRemoveWeek=async(wi)=>{
     if(ALL_WEEKS.length<=1) return;
-    setSyncing();
+    setSyncStatus("loading");
     try{
       let newRange;
       if(wi===ALL_WEEKS.length-1){
@@ -882,8 +896,11 @@ function App(){
       generateWeeks(newRange.start,newRange.end).forEach(w=>ALL_WEEKS.push(w));
       setWeekRange({...newRange});
       setWeekIdx(cur=>Math.min(cur,ALL_WEEKS.length-1));
-      setSynced();
-    }catch{ setErr(); }
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e);
+      setSyncStatus("error");
+    }
     setModal(null);
   };
 
@@ -910,7 +927,7 @@ function App(){
           </h1>
           <div style={{marginTop:6,display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)"}}>IAR Lead · Week of {ALL_WEEKS[weekIdx]?.label}</span>
-            <SyncDot status={syncStatus}/>
+            <SyncDot status={syncStatus} dirty={dirty}/>
           </div>
         </div>
         <ProgressRing pct={weekPct} size={72} stroke={5} color="#60A5FA" label="WEEK AVG"/>
@@ -950,6 +967,14 @@ function App(){
           <button key={v} className="bh" onClick={()=>setView(v)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${view===v?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.07)"}`,background:view===v?"rgba(96,165,250,0.1)":"transparent",color:view===v?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>{l}</button>
         ))}
         <div style={{flex:1}}/>
+        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.08)",color:syncStatus!=="idle"?"rgba(255,255,255,0.25)":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
+          {syncStatus==="loading"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
+          🔄 Refresh
+        </button>
+        <button className="bh" onClick={handleSave} disabled={!dirty||syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${dirty&&syncStatus==="idle"?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.05)"}`,background:dirty&&syncStatus==="idle"?"rgba(52,211,153,0.08)":"transparent",color:dirty&&syncStatus==="idle"?"#34D399":"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:dirty&&syncStatus==="idle"?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:4}}>
+          {syncStatus==="saving"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#A78BFA",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
+          💾 Save
+        </button>
         <button className="bh" onClick={()=>setModal("weeks")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>📅 Weeks</button>
         <button className="bh" onClick={()=>setModal("slots")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⏱ Slots</button>
         <button className="bh" onClick={()=>setModal("drive")} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${driveFolder?"rgba(96,165,250,0.3)":"rgba(255,255,255,0.07)"}`,background:driveFolder?"rgba(96,165,250,0.08)":"transparent",color:driveFolder?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
