@@ -7,7 +7,6 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async></script>
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -38,10 +37,6 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-
-// ── GOOGLE SHEETS CONFIG ──
-// Set your Google OAuth 2.0 Client ID here (console.cloud.google.com → APIs & Services → Credentials)
-const GOOGLE_CLIENT_ID = "";
 
 // ── AUTH ──
 const ACCESS_CODE = "115052";
@@ -257,63 +252,6 @@ function buildTxt(weekIdx,day,tasks,checkedSet,notes){
   return lines.join("\n");
 }
 
-
-// ── GOOGLE SHEETS HELPERS ──
-function buildSheetRows(weekIdx,day,tasks,checkedSet,notes){
-  const week=ALL_WEEKS[weekIdx];
-  const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
-  const dateStr=dayDate.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
-  const done=tasks.filter(t=>checkedSet.has(t.id)).length;
-  const rows=[
-    ["Day",DAY_FULL[day]],
-    ["Date",dateStr],
-    ["Week of",week.label],
-    ["Completion",`${done} of ${tasks.length} (${tasks.length?Math.round(done/tasks.length*100):0}%)`],
-    [],
-    ["Start Time","Task","Completed"],
-  ];
-  const seen={},groups=[];
-  tasks.forEach(t=>{if(!seen[t.time]){seen[t.time]=true;groups.push(t.time);}});
-  groups.forEach(time=>{
-    const start=extractStartTime(time);
-    tasks.filter(t=>t.time===time).forEach((t,i)=>{
-      rows.push([i===0?start:"",t.label,checkedSet.has(t.id)?"TRUE":"FALSE"]);
-    });
-  });
-  if(notes?.trim()) rows.push([],["Notes",notes.trim(),""]);
-  return rows;
-}
-function getGoogleToken(){
-  return new Promise((resolve,reject)=>{
-    if(!window.google?.accounts?.oauth2){reject(new Error("Google Identity Services not loaded"));return;}
-    const client=google.accounts.oauth2.initTokenClient({
-      client_id:GOOGLE_CLIENT_ID,
-      scope:"https://www.googleapis.com/auth/spreadsheets",
-      callback:(response)=>{
-        if(response.error) reject(new Error(response.error_description||response.error));
-        else resolve(response.access_token);
-      },
-      error_callback:(err)=>reject(new Error(err.message||"OAuth error")),
-    });
-    client.requestAccessToken({prompt:"consent"});
-  });
-}
-async function createGoogleSheet(token,title,rows){
-  const createRes=await fetch("https://sheets.googleapis.com/v4/spreadsheets",{
-    method:"POST",
-    headers:{"Authorization":`Bearer ${token}`,"Content-Type":"application/json"},
-    body:JSON.stringify({properties:{title}}),
-  });
-  if(!createRes.ok) throw new Error(`Failed to create spreadsheet (${createRes.status})`);
-  const {spreadsheetId}=await createRes.json();
-  const updateRes=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,{
-    method:"POST",
-    headers:{"Authorization":`Bearer ${token}`,"Content-Type":"application/json"},
-    body:JSON.stringify({valueInputOption:"RAW",data:[{range:"A1",values:rows}]}),
-  });
-  if(!updateRes.ok) throw new Error(`Failed to populate spreadsheet (${updateRes.status})`);
-  return spreadsheetId;
-}
 
 // ── SYNC STATUS INDICATOR ──
 function SyncDot({status,dirty}){
@@ -535,53 +473,27 @@ function SlotsModal({slots,onSave,onClose}){
 
 
 function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
-  const [fmt,setFmt]=useState("gsheet");
+  const [fmt,setFmt]=useState("csv");
   const [copied,setCopied]=useState(false);
   const [downloaded,setDownloaded]=useState(false);
-  const [sheetUrl,setSheetUrl]=useState(null);
-  const [creating,setCreating]=useState(false);
-  const [sheetError,setSheetError]=useState(null);
   const week=ALL_WEEKS[weekIdx];
   const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
   const fileBase=`mason_${day.toLowerCase()}_${dayDate.toISOString().slice(0,10)}`;
   const done=tasks.filter(t=>checkedSet.has(t.id)).length;
   const pct=tasks.length?Math.round(done/tasks.length*100):0;
-  const txtContent=buildTxt(weekIdx,day,tasks,checkedSet,notes);
-
-  const handleDownloadTxt=()=>{
-    const blob=new Blob([txtContent],{type:"text/plain"});
+  const content=fmt==="csv"?buildCSV(weekIdx,day,tasks,checkedSet,notes):buildTxt(weekIdx,day,tasks,checkedSet,notes);
+  const filename=`${fileBase}.${fmt}`;
+  const mime=fmt==="csv"?"text/csv":"text/plain";
+  const handleDownload=()=>{
+    const blob=new Blob([content],{type:mime});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
-    a.href=url; a.download=`${fileBase}.txt`; a.click();
+    a.href=url; a.download=filename; a.click();
     URL.revokeObjectURL(url);
     setDownloaded(true);
     setTimeout(()=>setDownloaded(false),2500);
   };
-  const handleCopyTxt=()=>{navigator.clipboard.writeText(txtContent).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
-  const handleCopyUrl=()=>{navigator.clipboard.writeText(sheetUrl).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
-
-  const handleCreateSheet=async()=>{
-    if(!GOOGLE_CLIENT_ID){setSheetError("Google Client ID not configured. Add it to GOOGLE_CLIENT_ID in the app source.");return;}
-    setCreating(true);setSheetError(null);
-    try{
-      const token=await getGoogleToken();
-      const title=`${DAY_FULL[day]} Summary — ${dayDate.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}`;
-      const rows=buildSheetRows(weekIdx,day,tasks,checkedSet,notes);
-      const spreadsheetId=await createGoogleSheet(token,title,rows);
-      const url=`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-      setSheetUrl(url);
-      const gsheetJson=JSON.stringify({url,resource_id:`spreadsheet:${spreadsheetId}`});
-      const blob=new Blob([gsheetJson],{type:"application/json"});
-      const blobUrl=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=blobUrl; a.download=`${fileBase}.gsheet`; a.click();
-      URL.revokeObjectURL(blobUrl);
-      setDownloaded(true);
-      setTimeout(()=>setDownloaded(false),2500);
-    }catch(e){setSheetError(e.message||"Failed to create Google Sheet");}
-    finally{setCreating(false);}
-  };
-
+  const handleCopy=()=>{navigator.clipboard.writeText(content).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
   return <Modal title={`Export — ${DAY_FULL[day]}`} subtitle="EXPORT DAY SUMMARY" onClose={onClose} maxWidth={480}>
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
@@ -592,30 +504,19 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
     </div>
     <FormRow label="FORMAT">
       <div style={{display:"flex",gap:8}}>
-        {[["gsheet","Google Sheets (.gsheet)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
-          <button key={v} onClick={()=>{setFmt(v);setSheetUrl(null);setSheetError(null);setDownloaded(false);}} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?(v==="gsheet"?"#34D399":"#60A5FA"):"rgba(255,255,255,0.08)"}`,background:fmt===v?(v==="gsheet"?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.1)"):"rgba(255,255,255,0.02)",color:fmt===v?(v==="gsheet"?"#6EE7B7":"#93C5FD"):"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
+        {[["csv","Spreadsheet (.csv)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFmt(v)} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:fmt===v?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.02)",color:fmt===v?"#93C5FD":"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
-      {fmt==="gsheet"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Creates a new Google Sheet · Columns: Start Time · Task · Completed</div>}
-      {fmt==="txt"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Formatted text summary with task list and notes</div>}
+      {fmt==="csv"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Columns: Start Time · Task · Completed (TRUE/FALSE)</div>}
     </FormRow>
-    {fmt==="txt"&&<div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
-      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{txtContent.slice(0,380)}…</pre>
-    </div>}
-    {fmt==="gsheet"&&sheetUrl&&<div style={{background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:9,padding:"10px 13px",marginBottom:14}}>
-      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#34D399",marginBottom:5}}>SHEET CREATED · .gsheet file downloaded</div>
-      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.5)",wordBreak:"break-all"}}>{sheetUrl}</div>
-    </div>}
-    {sheetError&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:9,padding:"10px 13px",marginBottom:14,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#F87171"}}>{sheetError}</div>}
-    {fmt==="txt"&&<div style={{display:"flex",gap:9}}>
-      <button onClick={handleCopyTxt} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
-      <button onClick={handleDownloadTxt} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
-    </div>}
-    {fmt==="gsheet"&&!sheetUrl&&<button onClick={handleCreateSheet} disabled={creating} style={{width:"100%",padding:"11px 0",borderRadius:10,border:"1px solid rgba(52,211,153,0.3)",background:creating?"rgba(52,211,153,0.03)":"rgba(52,211,153,0.1)",color:creating?"rgba(52,211,153,0.45)":"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:creating?"not-allowed":"pointer"}}>{creating?"Creating…":"⬆ Create Google Sheet"}</button>}
-    {fmt==="gsheet"&&sheetUrl&&<div style={{display:"flex",gap:9}}>
-      <button onClick={handleCopyUrl} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy URL"}</button>
-      <button onClick={()=>window.open(sheetUrl,"_blank")} style={{flex:1,padding:"11px 0",borderRadius:10,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.1)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>Open Sheet ↗</button>
-    </div>}
+    <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
+      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{content.slice(0,380)}…</pre>
+    </div>
+    <div style={{display:"flex",gap:9}}>
+      <button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
+      <button onClick={handleDownload} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
+    </div>
   </Modal>;
 }
 
