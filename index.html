@@ -7,6 +7,7 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -253,6 +254,31 @@ function buildTxt(weekIdx,day,tasks,checkedSet,notes){
 }
 
 
+function buildSheetRows(weekIdx,day,tasks,checkedSet,notes){
+  const week=ALL_WEEKS[weekIdx];
+  const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
+  const dateStr=dayDate.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+  const done=tasks.filter(t=>checkedSet.has(t.id)).length;
+  const rows=[
+    ["Day",DAY_FULL[day]],
+    ["Date",dateStr],
+    ["Week of",week.label],
+    ["Completion",`${done} of ${tasks.length} (${tasks.length?Math.round(done/tasks.length*100):0}%)`],
+    [],
+    ["Start Time","Task","Completed"],
+  ];
+  const seen={},groups=[];
+  tasks.forEach(t=>{if(!seen[t.time]){seen[t.time]=true;groups.push(t.time);}});
+  groups.forEach(time=>{
+    const start=extractStartTime(time);
+    tasks.filter(t=>t.time===time).forEach((t,i)=>{
+      rows.push([i===0?start:"",t.label,checkedSet.has(t.id)?"TRUE":"FALSE"]);
+    });
+  });
+  if(notes?.trim()) rows.push([],["Notes",notes.trim()]);
+  return rows;
+}
+
 // ── SYNC STATUS INDICATOR ──
 function SyncDot({status,dirty}){
   const colors={idle:"#34D399",loading:"#FCD34D",saving:"#A78BFA",error:"#EF4444",dirty:"#FB923C"};
@@ -473,7 +499,7 @@ function SlotsModal({slots,onSave,onClose}){
 
 
 function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
-  const [fmt,setFmt]=useState("csv");
+  const [fmt,setFmt]=useState("xlsx");
   const [copied,setCopied]=useState(false);
   const [downloaded,setDownloaded]=useState(false);
   const week=ALL_WEEKS[weekIdx];
@@ -481,19 +507,24 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
   const fileBase=`mason_${day.toLowerCase()}_${dayDate.toISOString().slice(0,10)}`;
   const done=tasks.filter(t=>checkedSet.has(t.id)).length;
   const pct=tasks.length?Math.round(done/tasks.length*100):0;
-  const content=fmt==="csv"?buildCSV(weekIdx,day,tasks,checkedSet,notes):buildTxt(weekIdx,day,tasks,checkedSet,notes);
-  const filename=`${fileBase}.${fmt}`;
-  const mime=fmt==="csv"?"text/csv":"text/plain";
+  const txtContent=buildTxt(weekIdx,day,tasks,checkedSet,notes);
   const handleDownload=()=>{
-    const blob=new Blob([content],{type:mime});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url; a.download=filename; a.click();
-    URL.revokeObjectURL(url);
+    if(fmt==="xlsx"){
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.aoa_to_sheet(buildSheetRows(weekIdx,day,tasks,checkedSet,notes));
+      XLSX.utils.book_append_sheet(wb,ws,DAY_FULL[day]);
+      XLSX.writeFile(wb,`${fileBase}.xlsx`);
+    } else {
+      const blob=new Blob([txtContent],{type:"text/plain"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=`${fileBase}.txt`; a.click();
+      URL.revokeObjectURL(url);
+    }
     setDownloaded(true);
     setTimeout(()=>setDownloaded(false),2500);
   };
-  const handleCopy=()=>{navigator.clipboard.writeText(content).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
+  const handleCopy=()=>{navigator.clipboard.writeText(txtContent).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
   return <Modal title={`Export — ${DAY_FULL[day]}`} subtitle="EXPORT DAY SUMMARY" onClose={onClose} maxWidth={480}>
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
@@ -504,18 +535,18 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
     </div>
     <FormRow label="FORMAT">
       <div style={{display:"flex",gap:8}}>
-        {[["csv","Spreadsheet (.csv)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
+        {[["xlsx","Excel (.xlsx)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
           <button key={v} onClick={()=>setFmt(v)} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:fmt===v?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.02)",color:fmt===v?"#93C5FD":"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
-      {fmt==="csv"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Columns: Start Time · Task · Completed (TRUE/FALSE)</div>}
+      {fmt==="xlsx"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Columns: Start Time · Task · Completed (TRUE/FALSE)</div>}
     </FormRow>
     <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
-      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{content.slice(0,380)}…</pre>
+      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{fmt==="xlsx"?"Excel workbook · sheet: "+DAY_FULL[day]+"\n\nStart Time  ·  Task  ·  Completed\n─────────────────────────────────":txtContent.slice(0,380)+"…"}</pre>
     </div>
     <div style={{display:"flex",gap:9}}>
-      <button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
-      <button onClick={handleDownload} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
+      {fmt==="txt"&&<button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>}
+      <button onClick={handleDownload} style={{flex:fmt==="txt"?1:"unset",width:fmt==="xlsx"?"100%":undefined,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
     </div>
   </Modal>;
 }
