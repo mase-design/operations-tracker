@@ -7,7 +7,6 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async></script>
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -40,7 +39,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 // ── AUTH ──
-const ACCESS_CODE = "cornerstone2026";
+const ACCESS_CODE = "115052";
 const AUTH_KEY = "ops_tracker_auth";
 
 // ── FIRESTORE STORE ──
@@ -68,10 +67,6 @@ const store = {
 
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
-
-// ── CONFIG ──
-const GAPI_CLIENT_ID = "542104837592-apuhqsr50hk7obc3d1idhht1s2hc1a81.apps.googleusercontent.com";
-const GAPI_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 // ── CONSTANTS ──
 const CATEGORY_META = {
@@ -257,27 +252,6 @@ function buildTxt(weekIdx,day,tasks,checkedSet,notes){
   return lines.join("\n");
 }
 
-
-// ── GOOGLE DRIVE ──
-async function getGoogleToken(){
-  return new Promise((resolve,reject)=>{
-    if(!window.google?.accounts?.oauth2){reject(new Error("Google sign-in library not loaded yet."));return;}
-    const client=window.google.accounts.oauth2.initTokenClient({
-      client_id:GAPI_CLIENT_ID,scope:GAPI_SCOPE,
-      callback:(resp)=>resp.error?reject(new Error(resp.error)):resolve(resp.access_token),
-    });
-    client.requestAccessToken({prompt:""});
-  });
-}
-async function uploadToDrive(content,filename,mime,token){
-  const boundary="boundary_mase_export";
-  const body=[`--${boundary}`,"Content-Type: application/json; charset=UTF-8","",
-    JSON.stringify({name:filename}),"",`--${boundary}`,`Content-Type: ${mime}`,"",content,"",`--${boundary}--`].join("\r\n");
-  const resp=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-    {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":`multipart/related; boundary=${boundary}`},body});
-  if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||"Upload failed");}
-  return resp.json();
-}
 
 // ── SYNC STATUS INDICATOR ──
 function SyncDot({status,dirty}){
@@ -502,9 +476,6 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
   const [fmt,setFmt]=useState("csv");
   const [copied,setCopied]=useState(false);
   const [downloaded,setDownloaded]=useState(false);
-  const [dlState,setDlState]=useState("idle");
-  const [errorMsg,setErrorMsg]=useState("");
-  const [uploadedLink,setUploadedLink]=useState(null);
   const week=ALL_WEEKS[weekIdx];
   const dayDate=new Date(week.mon); dayDate.setDate(dayDate.getDate()+DAYS.indexOf(day));
   const fileBase=`mason_${day.toLowerCase()}_${dayDate.toISOString().slice(0,10)}`;
@@ -522,19 +493,7 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
     setDownloaded(true);
     setTimeout(()=>setDownloaded(false),2500);
   };
-  const handleUpload=async()=>{
-    setDlState("authing"); setErrorMsg(""); setUploadedLink(null);
-    try{
-      const token=await getGoogleToken();
-      setDlState("uploading");
-      const file=await uploadToDrive(content,filename,mime,token);
-      setUploadedLink(`https://drive.google.com/file/d/${file.id}/view`);
-      setDlState("done");
-    }catch(e){ setErrorMsg(e.message||"Unknown error"); setDlState("error"); }
-  };
   const handleCopy=()=>{navigator.clipboard.writeText(content).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});};
-  const uploadLabel=dlState==="authing"?"Connecting…":dlState==="uploading"?"Uploading…":dlState==="done"?"✓ Uploaded!":"Upload to Drive";
-  const uploadBg=dlState==="done"?"linear-gradient(135deg,#065f46,#34D399)":dlState==="error"?"linear-gradient(135deg,#7f1d1d,#ef4444)":"linear-gradient(135deg,#1D4ED8,#3B82F6)";
   return <Modal title={`Export — ${DAY_FULL[day]}`} subtitle="EXPORT DAY SUMMARY" onClose={onClose} maxWidth={480}>
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
@@ -554,19 +513,9 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
     <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
       <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{content.slice(0,380)}…</pre>
     </div>
-    {uploadedLink&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:9,background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",marginBottom:12}}>
-      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.4)",flex:1}}>Uploaded to My Drive</span>
-      <a href={uploadedLink} target="_blank" rel="noopener noreferrer" style={{padding:"5px 12px",borderRadius:7,background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.25)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,textDecoration:"none",flexShrink:0}}>View file ↗</a>
-    </div>}
-    {dlState==="error"&&<div style={{padding:"9px 13px",borderRadius:9,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",marginBottom:12,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#FCA5A5"}}>{errorMsg}</div>}
     <div style={{display:"flex",gap:9}}>
       <button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>
       <button onClick={handleDownload} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
-      <button onClick={handleUpload} disabled={["authing","uploading"].includes(dlState)}
-        style={{flex:1.6,padding:"11px 0",borderRadius:10,border:"none",background:uploadBg,color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:13,cursor:["authing","uploading"].includes(dlState)?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,transition:"background 0.3s"}}>
-        {["authing","uploading"].includes(dlState)&&<span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>}
-        {uploadLabel}
-      </button>
     </div>
   </Modal>;
 }
