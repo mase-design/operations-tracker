@@ -430,7 +430,46 @@ function DayTaskModal({editTask,allSlots,day,onSave,onClose}){
   </Modal>;
 }
 
-function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,onEditTemplate,onClose}){
+function RescheduleModal({task,currentWeekIdx,currentDay,onReschedule,onClose}){
+  const [sel,setSel]=useState(null);
+  const meta=CATEGORY_META[task.category]||CATEGORY_META.team;
+  const groups=[];
+  const maxWi=Math.min(ALL_WEEKS.length-1,currentWeekIdx+2);
+  for(let wi=currentWeekIdx;wi<=maxWi;wi++){
+    const days=DAYS.filter(d=>wi===currentWeekIdx?DAYS.indexOf(d)>DAYS.indexOf(currentDay):true);
+    if(days.length>0) groups.push({wi,label:ALL_WEEKS[wi].label,days});
+  }
+  const willRecur=sel&&taskAppearsOnDay(task,sel.day);
+  return <Modal title="Reschedule task" subtitle="PUSH TO FUTURE" onClose={onClose} maxWidth={460}>
+    <div style={{padding:"10px 14px",borderRadius:9,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",marginBottom:14}}>
+      <div style={{fontFamily:"Outfit",fontWeight:600,fontSize:14,color:"#EFEFEF"}}>{task.label}</div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.3)",marginTop:3}}>{task.time} · {meta.label}</div>
+    </div>
+    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",marginBottom:10}}>MOVE TO DAY</div>
+    {groups.length===0
+      ?<div style={{padding:"16px 0",textAlign:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"rgba(255,255,255,0.25)"}}>No future days in range. Add more weeks first.</div>
+      :<div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
+        {groups.map(({wi,label,days})=>(
+          <div key={wi}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.28)",letterSpacing:"0.1em",marginBottom:5}}>{label}</div>
+            <div style={{display:"flex",gap:5}}>
+              {days.map(d=>{const isSelected=sel?.wi===wi&&sel?.day===d;return <button key={d} onClick={()=>setSel({wi,day:d})} style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${isSelected?"#A78BFA":"rgba(255,255,255,0.1)"}`,background:isSelected?"rgba(167,139,250,0.15)":"rgba(255,255,255,0.03)",color:isSelected?"#C4B5FD":"rgba(255,255,255,0.5)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>{d}</button>;})}
+            </div>
+          </div>
+        ))}
+      </div>
+    }
+    {willRecur&&<div style={{padding:"8px 12px",borderRadius:9,background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",marginBottom:12}}>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#93C5FD"}}>This task already recurs on {sel.day} — it will just be skipped today.</span>
+    </div>}
+    <div style={{display:"flex",gap:9,marginTop:6}}>
+      <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
+      <button onClick={()=>sel&&onReschedule(task,sel.wi,sel.day)} disabled={!sel} style={{flex:1.5,padding:"9px 0",borderRadius:9,cursor:sel?"pointer":"not-allowed",border:"none",background:sel?"linear-gradient(135deg,#5B21B6,#A78BFA)":"rgba(255,255,255,0.05)",color:sel?"#fff":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Push to {sel?sel.day+" →":"Future →"}</button>
+    </div>
+  </Modal>;
+}
+
+function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,onEditTemplate,onReschedule,onClose}){
   const slotOverrides=override?.slotOverrides||{};
   const currentSlot=slotOverrides[t.id]||t.time;
   const [slot,setSlot]=useState(currentSlot);
@@ -455,7 +494,8 @@ function DayOverridePanel({task:t,allSlots,override,onRemoveTask,onChangeSlot,on
     </FormRow>
     <div style={{display:"flex",gap:9,marginTop:6,flexWrap:"wrap"}}>
       <button onClick={()=>onRemoveTask(t.id)} style={{padding:"9px 14px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#FCA5A5",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>{isRemoved?"Restore task":"Remove today"}</button>
-      <button onClick={onEditTemplate} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.07)",color:"#C4B5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Edit template…</button>
+      {!isRemoved&&<button onClick={onReschedule} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.07)",color:"#C4B5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Reschedule…</button>}
+      <button onClick={onEditTemplate} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.03)",color:"rgba(255,255,255,0.4)",fontFamily:"Outfit",fontWeight:600,fontSize:13}}>Edit template…</button>
       <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
       <button onClick={handleSlotSave} style={{flex:1.4,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"none",background:"linear-gradient(135deg,#d97706,#f59e0b)",color:"#fff",fontFamily:"Outfit",fontWeight:700,fontSize:14}}>Save for Today</button>
     </div>
@@ -637,6 +677,7 @@ function App(){
   const [syncStatus,setSyncStatus]=useState("idle");
   const [modal,setModal]=useState(null);
   const [pendingScopes,setPendingScopes]=useState([]);
+  const [pendingOverrideOps,setPendingOverrideOps]=useState([]);
   const [view,setView]=useState("day");
   const todayDay=getTodayDayName();
   const isCurrentWeek=weekIdx===getCurrentWeekIdx();
@@ -784,6 +825,22 @@ function App(){
   };
   const handleSaveSlots=list=>{ setTimeSlots(list); setDirty(true); setModal(null); };
 
+  const handleRescheduleTask=(task,targetWi,targetDay)=>{
+    // Remove from current day
+    updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(task.id)?r:[...r,task.id]};});
+    // Only add to target day if task doesn't naturally appear there (avoid duplicates)
+    if(!taskAppearsOnDay(task,targetDay)){
+      const rescheduled={...task,_dayOnly:true};
+      if(targetWi===weekIdx){
+        updateOv(weekIdx,targetDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==rescheduled.id),rescheduled]}));
+      } else {
+        setPendingOverrideOps(p=>[...p,{type:"addTask",task:rescheduled,wi:targetWi,day:targetDay}]);
+        setDirty(true);
+      }
+    }
+    setModal(null);
+  };
+
   const handleRefresh=async()=>{
     setSyncStatus("loading");
     try{
@@ -838,6 +895,15 @@ function App(){
         }
       }
       setPendingScopes([]);
+      for(const op of pendingOverrideOps){
+        if(op.type==="addTask"){
+          const raw=await store.get(overrideKey(op.wi,op.day));
+          let mov=raw?JSON.parse(raw):{removed:[],added:[],slotOverrides:{}};
+          mov.added=[...(mov.added||[]).filter(x=>x.id!==op.task.id),op.task];
+          await store.set(overrideKey(op.wi,op.day),JSON.stringify(mov));
+        }
+      }
+      setPendingOverrideOps([]);
       setDirty(false);
       setSyncStatus("idle");
     }catch(e){
@@ -1092,7 +1158,8 @@ function App(){
     {modal==="weeks"&&<WeeksModal weeks={ALL_WEEKS} weekIdx={weekIdx} onAddWeek={handleAddWeek} onRemoveWeek={handleRemoveWeek} onClose={()=>setModal(null)}/>}
     {modal==="newTask"&&<TaskModal allSlots={timeSlots} onSave={handleSaveTask} onDelete={handleDeleteTask} onClose={()=>setModal(null)}/>}
     {modal==="newDayTask"&&<DayTaskModal allSlots={timeSlots} day={activeDay} onSave={handleSaveDayTask} onClose={()=>setModal(null)}/>}
-    {modal?.editRepeatingTask&&<DayOverridePanel task={modal.editRepeatingTask} allSlots={timeSlots} override={ov} onRemoveTask={handleToggleRemoveTask} onChangeSlot={handleDaySlotChange} onEditTemplate={()=>setModal({editTaskTemplate:modal.editRepeatingTask})} onClose={()=>setModal(null)}/>}
+    {modal?.editRepeatingTask&&<DayOverridePanel task={modal.editRepeatingTask} allSlots={timeSlots} override={ov} onRemoveTask={handleToggleRemoveTask} onChangeSlot={handleDaySlotChange} onEditTemplate={()=>setModal({editTaskTemplate:modal.editRepeatingTask})} onReschedule={()=>setModal({rescheduleTask:modal.editRepeatingTask})} onClose={()=>setModal(null)}/>}
+    {modal?.rescheduleTask&&<RescheduleModal task={modal.rescheduleTask} currentWeekIdx={weekIdx} currentDay={activeDay} onReschedule={handleRescheduleTask} onClose={()=>setModal(null)}/>}
     {modal?.editTaskTemplate&&<TaskModal editTask={modal.editTaskTemplate} allSlots={timeSlots} onSave={handleSaveTask} onDelete={handleDeleteTask} onClose={()=>setModal(null)}/>}
     {modal?.editDayTask&&<DayTaskModal editTask={modal.editDayTask} allSlots={timeSlots} day={activeDay} onSave={handleEditDayTask} onClose={()=>setModal(null)}/>}
   </div>;
