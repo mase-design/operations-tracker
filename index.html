@@ -461,7 +461,7 @@ function RescheduleModal({task,currentWeekIdx,currentDay,onReschedule,onClose}){
       </div>
     }
     {willRecur&&<div style={{padding:"8px 12px",borderRadius:9,background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",marginBottom:12}}>
-      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#93C5FD"}}>This task already recurs on {sel.day} — it will just be skipped today.</span>
+      <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"#93C5FD"}}>This task already recurs on {sel.day} — a copy will still appear there.</span>
     </div>}
     <div style={{display:"flex",gap:9,marginTop:6}}>
       <button onClick={onClose} style={{flex:1,padding:"9px 0",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:14}}>Cancel</button>
@@ -827,8 +827,6 @@ function App(){
   const handleSaveSlots=list=>{ setTimeSlots(list); setDirty(true); setModal(null); };
 
   const handleRescheduleTask=(task,targetWi,targetDay)=>{
-    // Remove from current day
-    updateOv(weekIdx,activeDay,prev=>{const r=prev.removed||[];return{...prev,removed:r.includes(task.id)?r:[...r,task.id]};});
     // Only add to target day if task doesn't naturally appear there (avoid duplicates)
     if(!taskAppearsOnDay(task,targetDay)){
       const rescheduled={...task,_dayOnly:true};
@@ -843,9 +841,7 @@ function App(){
   };
 
   const handleRescheduleDayTask=(task,targetWi,targetDay)=>{
-    // Remove from current day's added list
-    updateOv(weekIdx,activeDay,prev=>({...prev,added:(prev.added||[]).filter(x=>x.id!==task.id)}));
-    // Add to target day (day-only tasks never recur naturally, so always add)
+    // Add a copy to target day (original remains on current day)
     if(targetWi===weekIdx){
       updateOv(weekIdx,targetDay,prev=>({...prev,added:[...(prev.added||[]).filter(x=>x.id!==task.id),task]}));
     } else {
