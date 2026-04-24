@@ -550,6 +550,12 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
       const ws=XLSX.utils.aoa_to_sheet(buildSheetRows(weekIdx,day,tasks,checkedSet,notes));
       XLSX.utils.book_append_sheet(wb,ws,DAY_FULL[day]);
       XLSX.writeFile(wb,`${fileBase}.xlsx`);
+    } else if(fmt==="csv"){
+      const blob=new Blob([buildCSV(weekIdx,day,tasks,checkedSet,notes)],{type:"text/csv"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=`${fileBase}.csv`; a.click();
+      URL.revokeObjectURL(url);
     } else {
       const blob=new Blob([txtContent],{type:"text/plain"});
       const url=URL.createObjectURL(blob);
@@ -571,18 +577,18 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
     </div>
     <FormRow label="FORMAT">
       <div style={{display:"flex",gap:8}}>
-        {[["xlsx","Excel (.xlsx)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
+        {[["xlsx","Excel (.xlsx)"],["txt","Plain text (.txt)"],["csv","CSV (.csv)"]].map(([v,l])=>(
           <button key={v} onClick={()=>setFmt(v)} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:fmt===v?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.02)",color:fmt===v?"#93C5FD":"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
       {fmt==="xlsx"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Columns: Start Time · Task · Completed (TRUE/FALSE)</div>}
     </FormRow>
     <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
-      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{fmt==="xlsx"?"Excel workbook · sheet: "+DAY_FULL[day]+"\n\nStart Time  ·  Task  ·  Completed\n─────────────────────────────────":txtContent.slice(0,380)+"…"}</pre>
+      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{fmt==="xlsx"?"Excel workbook · sheet: "+DAY_FULL[day]+"\n\nStart Time  ·  Task  ·  Completed\n─────────────────────────────────":fmt==="csv"?buildCSV(weekIdx,day,tasks,checkedSet,notes).slice(0,380)+"…":txtContent.slice(0,380)+"…"}</pre>
     </div>
     <div style={{display:"flex",gap:9}}>
       {fmt==="txt"&&<button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>}
-      <button onClick={handleDownload} style={{flex:fmt==="txt"?1:"unset",width:fmt==="xlsx"?"100%":undefined,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
+      <button onClick={handleDownload} style={{flex:fmt==="txt"?1:"unset",width:fmt!=="txt"?"100%":undefined,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
     </div>
   </Modal>;
 }
@@ -761,6 +767,15 @@ function App(){
 
   const toggle=useCallback((day,id)=>{
     const s=new Set(checked[day]); s.has(id)?s.delete(id):s.add(id);
+    setChecked(p=>({...p,[day]:s}));
+    store.set(checkedKey(weekIdx,day),JSON.stringify([...s]));
+  },[checked,weekIdx]);
+
+  const toggleSlot=useCallback((day,taskIds)=>{
+    const s=new Set(checked[day]);
+    const allDone=taskIds.every(id=>s.has(id));
+    if(allDone) taskIds.forEach(id=>s.delete(id));
+    else taskIds.forEach(id=>s.add(id));
     setChecked(p=>({...p,[day]:s}));
     store.set(checkedKey(weekIdx,day),JSON.stringify([...s]));
   },[checked,weekIdx]);
@@ -971,6 +986,7 @@ function App(){
           </span>
         </div>
         <button className="bh" onClick={()=>setWeekIdx(i=>Math.min(ALL_WEEKS.length-1,i+1))} disabled={weekIdx===ALL_WEEKS.length-1} style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:weekIdx===ALL_WEEKS.length-1?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.4)",cursor:weekIdx===ALL_WEEKS.length-1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,lineHeight:1}}>›</button>
+        {!isCurrentWeek&&<button className="bh" onClick={()=>{const ci=getCurrentWeekIdx();setWeekIdx(ci>=0?ci:0);if(DAYS.includes(todayDay))setActiveDay(todayDay);setView("day");}} style={{padding:"4px 10px",borderRadius:7,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.07)",color:"#34D399",fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,fontWeight:600,cursor:"pointer",letterSpacing:"0.06em",flexShrink:0}}>TODAY</button>}
       </div>
     </div>
 
@@ -986,6 +1002,8 @@ function App(){
           const pct=dayPct(d),isToday=isCurrentWeek&&d===todayDay,isActive=d===activeDay;
           const ov2=getOv(weekIdx,d);
           const hasOv=((ov2.removed||[]).length>0||(ov2.added||[]).length>0||Object.keys(ov2.slotOverrides||{}).length>0);
+          const dd=new Date(ALL_WEEKS[weekIdx].mon);dd.setDate(dd.getDate()+DAYS.indexOf(d));
+          const dateLabel=(dd.getMonth()+1)+"/"+(dd.getDate());
           return <button key={d} className="bh" onClick={()=>{setActiveDay(d);setView("day");}} style={{flex:1,padding:"8px 4px 7px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?"rgba(96,165,250,0.12)":"transparent",outline:isActive?"1px solid rgba(96,165,250,0.25)":"none",opacity:isActive?1:0.5,position:"relative"}}>
             {hasOv&&<span style={{position:"absolute",top:5,right:7,width:5,height:5,borderRadius:"50%",background:"#FB923C"}}/>}
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
@@ -993,6 +1011,7 @@ function App(){
                 {isToday&&<span style={{width:5,height:5,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
                 <span style={{fontFamily:"Outfit",fontWeight:700,fontSize:12,color:isActive?"#93C5FD":"#CCC"}}>{d}</span>
               </div>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8,color:isToday?"rgba(52,211,153,0.65)":"rgba(255,255,255,0.2)"}}>{dateLabel}</span>
               <ProgressBar pct={pct} height={2.5}/>
               <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:pct===100?"#34D399":"rgba(255,255,255,0.28)"}}>{pct}%</span>
             </div>
@@ -1076,9 +1095,9 @@ function App(){
           {taskGroups.map(([time,tasks])=>{
             const allDone=tasks.every(t=>checked[activeDay]?.has(t.id));
             return <div key={time} style={{borderRadius:13,overflow:"hidden",border:`1px solid ${allDone?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.06)"}`}}>
-              <div style={{padding:"6px 14px",background:allDone?"rgba(52,211,153,0.06)":"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.04)",display:"flex",alignItems:"center",gap:8}}>
+              <div onClick={()=>toggleSlot(activeDay,tasks.map(t=>t.id))} style={{padding:"6px 14px",background:allDone?"rgba(52,211,153,0.06)":"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.04)",display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
                 <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:allDone?"#34D399":"rgba(255,255,255,0.32)",flex:1}}>{time}</span>
-                {allDone&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:"#34D399",background:"#34D39914",padding:"1px 7px",borderRadius:99}}>DONE ✓</span>}
+                <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8.5,color:allDone?"#34D399":"rgba(255,255,255,0.15)",background:allDone?"#34D39914":"transparent",padding:"1px 7px",borderRadius:99,border:`1px solid ${allDone?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.07)"}`}}>{allDone?"DONE ✓":"✓ all"}</span>
               </div>
               <div style={{background:"rgba(0,0,0,0.15)"}}>
                 {tasks.map(t=>{
