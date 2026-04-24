@@ -180,6 +180,8 @@ function generateWeeks(startDate,endDate){
 }
 let ALL_WEEKS=[];
 function getTodayDayName(){ return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date().getDay()]; }
+// Pre-populate synchronously so the first render never sees an empty ALL_WEEKS
+(()=>{ const r=getDefaultWeekRange(); generateWeeks(r.start,r.end).forEach(w=>ALL_WEEKS.push(w)); })();
 function getCurrentWeekIdx(){
   const now=new Date();
   for(let i=ALL_WEEKS.length-1;i>=0;i--){
@@ -638,7 +640,7 @@ function WeeksModal({weeks,weekIdx,onAddWeek,onRemoveWeek,onClose}){
 
 // ── MAIN APP ──
 function App(){
-  const [weekIdx,setWeekIdx]=useState(0);
+  const [weekIdx,setWeekIdx]=useState(()=>{const ci=getCurrentWeekIdx();return ci>=0?ci:0;});
   const [weeksReady,setWeeksReady]=useState(false);
   const [weekRange,setWeekRange]=useState(null);
   const [activeDay,setActiveDay]=useState(()=>{const d=getTodayDayName();return DAYS.includes(d)?d:"Mon";});
