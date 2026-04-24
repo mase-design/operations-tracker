@@ -299,7 +299,7 @@ function ProgressBar({pct,color="#60A5FA",height=5}){
     <div style={{width:`${pct}%`,height:"100%",background:pct===100?"linear-gradient(90deg,#059669,#34D399)":`linear-gradient(90deg,${color}bb,${color})`,borderRadius:99,transition:"width 0.5s"}}/>
   </div>;
 }
-function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label,value}){
+function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label,value,valueFontSize=13}){
   const r=(size-stroke)/2,circ=2*Math.PI*r;
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -308,7 +308,7 @@ function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label,value}){
         strokeDasharray={circ} strokeDashoffset={circ*(1-pct/100)} strokeLinecap="round"
         transform={`rotate(-90 ${size/2} ${size/2})`} style={{transition:"stroke-dashoffset 0.6s"}}/>
       <text x={size/2} y={size/2+5} textAnchor="middle" fill={pct===100?"#34D399":"#F0F0F0"}
-        fontSize="13" fontFamily="Outfit" fontWeight="700">{value!==undefined?value:`${pct}%`}</text>
+        fontSize={valueFontSize} fontFamily="Outfit" fontWeight="700">{value!==undefined?value:`${pct}%`}</text>
     </svg>
     {label&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em"}}>{label}</div>}
   </div>;
@@ -1032,11 +1032,11 @@ function App(){
           </div>
         </div>
         <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
-          <ProgressRing pct={totalWeekTasks?Math.round(completedWeekTasks/totalWeekTasks*100):0} size={62} stroke={4} color="#60A5FA" label="TASKS" value={completedWeekTasks}/>
           <ProgressRing pct={weekPct} size={62} stroke={4} color="#A78BFA" label="WEEK AVG"/>
           {isCurrentWeek&&DAYS.includes(todayDay)
             ?<ProgressRing pct={dayPct(todayDay)} size={62} stroke={4} color="#34D399" label="TODAY"/>
             :<ProgressRing pct={0} size={62} stroke={4} color="#34D399" label="TODAY" value="—"/>}
+          <ProgressRing pct={totalWeekTasks?Math.round(completedWeekTasks/totalWeekTasks*100):0} size={62} stroke={4} color="#60A5FA" label="TASKS" value={`${completedWeekTasks}/${totalWeekTasks}`} valueFontSize={11}/>
         </div>
       </div>
 
@@ -1101,17 +1101,19 @@ function App(){
 
         <div style={{flex:1}}/>
 
-        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} title="Refresh" style={{width:32,height:32,borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.06)",color:syncStatus!=="idle"?"rgba(255,255,255,0.2)":"#93C5FD",cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-          {syncStatus==="loading"?<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>:"🔄"}
+        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} style={{padding:"6px 11px",borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.06)",color:syncStatus!=="idle"?"rgba(255,255,255,0.2)":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:5}}>
+          {syncStatus==="loading"?<span style={{width:9,height:9,border:"2px solid rgba(255,255,255,0.15)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite",flexShrink:0}}/>:<span style={{fontSize:11}}>↺</span>}
+          Sync
         </button>
 
-        <button className="bh" onClick={handleSave} disabled={!dirty||syncStatus!=="idle"} title="Save" style={{width:32,height:32,borderRadius:8,border:`1px solid ${dirty&&syncStatus==="idle"?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.05)"}`,background:dirty&&syncStatus==="idle"?"rgba(52,211,153,0.08)":"transparent",color:dirty&&syncStatus==="idle"?"#34D399":"rgba(255,255,255,0.2)",cursor:dirty&&syncStatus==="idle"?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-          {syncStatus==="saving"?<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#A78BFA",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>:"💾"}
+        <button className="bh" onClick={handleSave} disabled={!dirty||syncStatus!=="idle"} style={{padding:"6px 11px",borderRadius:8,border:`1px solid ${dirty&&syncStatus==="idle"?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.05)"}`,background:dirty&&syncStatus==="idle"?"rgba(52,211,153,0.08)":"transparent",color:dirty&&syncStatus==="idle"?"#34D399":"rgba(255,255,255,0.2)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:dirty&&syncStatus==="idle"?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:5}}>
+          {syncStatus==="saving"?<span style={{width:9,height:9,border:"2px solid rgba(255,255,255,0.15)",borderTopColor:"#A78BFA",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite",flexShrink:0}}/>:<span style={{fontSize:11}}>↑</span>}
+          Save
         </button>
 
         <div style={{position:"relative"}}>
           {settingsMenuOpen&&<div style={{position:"fixed",inset:0,zIndex:5}} onClick={()=>setSettingsMenuOpen(false)}/>}
-          <button className="bh" onClick={()=>setSettingsMenuOpen(p=>!p)} title="Settings" style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"rgba(255,255,255,0.5)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>⚙</button>
+          <button className="bh" onClick={()=>setSettingsMenuOpen(p=>!p)} style={{padding:"6px 11px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:settingsMenuOpen?"rgba(255,255,255,0.07)":"rgba(255,255,255,0.04)",color:settingsMenuOpen?"rgba(255,255,255,0.7)":"rgba(255,255,255,0.45)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>⚙ <span style={{fontSize:9,opacity:0.6}}>▾</span></button>
           {settingsMenuOpen&&<div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:10,background:"#111420",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,boxShadow:"0 16px 40px rgba(0,0,0,0.6)",overflow:"hidden",minWidth:145}}>
             <button className="bh" onClick={()=>{setSettingsMenuOpen(false);setModal("weeks");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.65)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>📅 Weeks</button>
             <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
