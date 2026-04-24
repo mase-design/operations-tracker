@@ -764,6 +764,12 @@ function App(){
     init();
   },[weekIdx,weeksReady]);
 
+  useEffect(()=>{
+    const onBeforeUnload=e=>{if(dirty){e.preventDefault();e.returnValue="";}};
+    window.addEventListener("beforeunload",onBeforeUnload);
+    return()=>window.removeEventListener("beforeunload",onBeforeUnload);
+  },[dirty]);
+
   const getOv=(wi,d)=>overrides[omKey(wi,d)]||{removed:[],added:[],slotOverrides:{}};
   const updateOv=(wi,d,updater)=>{
     const prev=getOv(wi,d),next=updater(prev),key=omKey(wi,d);
