@@ -550,12 +550,6 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
       const ws=XLSX.utils.aoa_to_sheet(buildSheetRows(weekIdx,day,tasks,checkedSet,notes));
       XLSX.utils.book_append_sheet(wb,ws,DAY_FULL[day]);
       XLSX.writeFile(wb,`${fileBase}.xlsx`);
-    } else if(fmt==="csv"){
-      const blob=new Blob([buildCSV(weekIdx,day,tasks,checkedSet,notes)],{type:"text/csv"});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url; a.download=`${fileBase}.csv`; a.click();
-      URL.revokeObjectURL(url);
     } else {
       const blob=new Blob([txtContent],{type:"text/plain"});
       const url=URL.createObjectURL(blob);
@@ -577,18 +571,18 @@ function ExportModal({weekIdx,day,tasks,checkedSet,notes,onClose}){
     </div>
     <FormRow label="FORMAT">
       <div style={{display:"flex",gap:8}}>
-        {[["xlsx","Excel (.xlsx)"],["txt","Plain text (.txt)"],["csv","CSV (.csv)"]].map(([v,l])=>(
+        {[["xlsx","Excel (.xlsx)"],["txt","Plain text (.txt)"]].map(([v,l])=>(
           <button key={v} onClick={()=>setFmt(v)} style={{flex:1,padding:"9px 10px",borderRadius:9,border:`1px solid ${fmt===v?"#60A5FA":"rgba(255,255,255,0.08)"}`,background:fmt===v?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.02)",color:fmt===v?"#93C5FD":"rgba(255,255,255,0.38)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
       {fmt==="xlsx"&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:6}}>Columns: Start Time · Task · Completed (TRUE/FALSE)</div>}
     </FormRow>
     <div style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:9,padding:"10px 13px",maxHeight:100,overflowY:"auto",marginBottom:14}}>
-      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{fmt==="xlsx"?"Excel workbook · sheet: "+DAY_FULL[day]+"\n\nStart Time  ·  Task  ·  Completed\n─────────────────────────────────":fmt==="csv"?buildCSV(weekIdx,day,tasks,checkedSet,notes).slice(0,380)+"…":txtContent.slice(0,380)+"…"}</pre>
+      <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:"rgba(255,255,255,0.35)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{fmt==="xlsx"?"Excel workbook · sheet: "+DAY_FULL[day]+"\n\nStart Time  ·  Task  ·  Completed\n─────────────────────────────────":txtContent.slice(0,380)+"…"}</pre>
     </div>
     <div style={{display:"flex",gap:9}}>
       {fmt==="txt"&&<button onClick={handleCopy} style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${copied?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.1)"}`,background:copied?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",color:copied?"#34D399":"rgba(255,255,255,0.55)",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{copied?"✓ Copied!":"Copy"}</button>}
-      <button onClick={handleDownload} style={{flex:fmt==="txt"?1:"unset",width:fmt!=="txt"?"100%":undefined,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
+      <button onClick={handleDownload} style={{flex:fmt==="txt"?1:"unset",width:fmt==="xlsx"?"100%":undefined,padding:"11px 0",borderRadius:10,border:`1px solid ${downloaded?"rgba(52,211,153,0.35)":"rgba(96,165,250,0.25)"}`,background:downloaded?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.08)",color:downloaded?"#34D399":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>{downloaded?"✓ Saved!":"⬇ Download"}</button>
     </div>
   </Modal>;
 }
