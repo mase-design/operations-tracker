@@ -68,7 +68,7 @@ const store = {
 </script>
 
 <script type="text/babel">
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 // ── CONSTANTS ──
 const CATEGORY_META = {
@@ -693,7 +693,8 @@ function App(){
   const [addMenuOpen,setAddMenuOpen]=useState(false);
   const [settingsMenuOpen,setSettingsMenuOpen]=useState(false);
   const todayDay=getTodayDayName();
-  const isCurrentWeek=weekIdx===getCurrentWeekIdx();
+  const currentWeekIdx=useMemo(()=>getCurrentWeekIdx(),[weekRange]);
+  const isCurrentWeek=weekIdx===currentWeekIdx;
   const omKey=(wi,d)=>`${wi}_${d}`;
 
   // ── WEEK RANGE INIT (once) ──
@@ -725,41 +726,47 @@ function App(){
     loadRange();
   },[]);
 
+  const loadWeekData=async(wi)=>{
+    setSyncStatus("loading");
+    try{
+      const rawSlots=await store.get(SLOTS_KEY);
+      if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
+
+      const rawTasks=await store.get(tasksKey(wi));
+      if(rawTasks){ try{setAllTasks(JSON.parse(rawTasks));}catch{} }
+      else{
+        let base=DEFAULT_TASKS;
+        if(wi>0){ const prev=await store.get(tasksKey(wi-1)); if(prev) try{base=JSON.parse(prev);}catch{} }
+        setAllTasks(base);
+        await store.set(tasksKey(wi),JSON.stringify(base));
+      }
+
+      const nc={},nn={},nov={};
+      await Promise.all(DAYS.map(async d=>{
+        const [rawC,rawN,rawOv]=await Promise.all([
+          store.get(checkedKey(wi,d)),
+          store.get(notesKey(wi,d)),
+          store.get(overrideKey(wi,d))
+        ]);
+        nc[d]=new Set(rawC?JSON.parse(rawC):[]);
+        nn[d]=rawN||"";
+        if(rawOv) try{nov[omKey(wi,d)]=JSON.parse(rawOv);}catch{}
+      }));
+      setChecked(nc); setNotes(nn); setOverrides(nov);
+      setDirty(false);
+      setSyncStatus("idle");
+    }catch(e){
+      console.error(e); setSyncStatus("error");
+    }
+  };
+
   // ── PER-WEEK DATA LOAD (on weekIdx change) ──
   useEffect(()=>{
     if(!weeksReady) return;
     async function init(){
       setLoading(true);
-      try{
-        const rawSlots=await store.get(SLOTS_KEY);
-        if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
-
-        // Load tasks for this week; if none exist, copy from previous week or use defaults
-        const rawTasks=await store.get(tasksKey(weekIdx));
-        if(rawTasks){ try{setAllTasks(JSON.parse(rawTasks));}catch{} }
-        else{
-          let base=DEFAULT_TASKS;
-          if(weekIdx>0){ const prev=await store.get(tasksKey(weekIdx-1)); if(prev) try{base=JSON.parse(prev);}catch{} }
-          setAllTasks(base);
-          await store.set(tasksKey(weekIdx),JSON.stringify(base));
-        }
-
-        // Load checked / notes / overrides for this week
-        const nc={},nn={},nov={};
-        for(const d of DAYS){
-          const [rawC,rawN,rawOv]=await Promise.all([
-            store.get(checkedKey(weekIdx,d)),
-            store.get(notesKey(weekIdx,d)),
-            store.get(overrideKey(weekIdx,d))
-          ]);
-          nc[d]=new Set(rawC?JSON.parse(rawC):[]);
-          nn[d]=rawN||"";
-          if(rawOv) try{nov[omKey(weekIdx,d)]=JSON.parse(rawOv);}catch{}
-        }
-        setChecked(nc); setNotes(nn); setOverrides(nov);
-        setDirty(false);
-      }catch(e){ console.error(e); setSyncStatus("error"); }
-      finally{ setLoading(false); }
+      await loadWeekData(weekIdx);
+      setLoading(false);
     }
     init();
   },[weekIdx,weeksReady]);
@@ -772,11 +779,12 @@ function App(){
   };
 
   const toggle=useCallback((day,id)=>{
-    const s=new Set(checked[day]); s.has(id)?s.delete(id):s.add(id);
-    const next={...checked,[day]:s};
-    setChecked(next);
+    setChecked(prev=>{
+      const s=new Set(prev[day]); s.has(id)?s.delete(id):s.add(id);
+      return {...prev,[day]:s};
+    });
     setDirty(true);
-  },[checked]);
+  },[]);
 
   const handleNotes=(day,text)=>{
     setNotes(p=>({...p,[day]:text}));
@@ -863,46 +871,21 @@ function App(){
     setModal(null);
   };
 
-  const handleRefresh=async()=>{
-    setSyncStatus("loading");
-    try{
-      const rawSlots=await store.get(SLOTS_KEY);
-      if(rawSlots) try{setTimeSlots(JSON.parse(rawSlots));}catch{}
-
-      const rawTasks=await store.get(tasksKey(weekIdx));
-      if(rawTasks) try{setAllTasks(JSON.parse(rawTasks));}catch{}
-
-      const nc={},nn={},nov={};
-      for(const d of DAYS){
-        const [rawC,rawN,rawOv]=await Promise.all([
-          store.get(checkedKey(weekIdx,d)),
-          store.get(notesKey(weekIdx,d)),
-          store.get(overrideKey(weekIdx,d))
-        ]);
-        nc[d]=new Set(rawC?JSON.parse(rawC):[]);
-        nn[d]=rawN||"";
-        if(rawOv) try{nov[omKey(weekIdx,d)]=JSON.parse(rawOv);}catch{}
-      }
-      setChecked(nc); setNotes(nn); setOverrides(nov);
-      setDirty(false);
-      setSyncStatus("idle");
-    }catch(e){
-      console.error(e);
-      setSyncStatus("error");
-    }
-  };
+  const handleRefresh=async()=>{ await loadWeekData(weekIdx); };
 
   const handleSave=async()=>{
     setSyncStatus("saving");
     try{
       await store.set(SLOTS_KEY,JSON.stringify(timeSlots));
       await store.set(tasksKey(weekIdx),JSON.stringify(allTasks));
-      for(const d of DAYS){
-        await store.set(checkedKey(weekIdx,d),JSON.stringify([...checked[d]]));
-        await store.set(notesKey(weekIdx,d),notes[d]||"");
+      await Promise.all(DAYS.map(d=>{
         const ov=overrides[omKey(weekIdx,d)]||{removed:[],added:[],slotOverrides:{}};
-        await store.set(overrideKey(weekIdx,d),JSON.stringify(ov));
-      }
+        return Promise.all([
+          store.set(checkedKey(weekIdx,d),JSON.stringify([...checked[d]])),
+          store.set(notesKey(weekIdx,d),notes[d]||""),
+          store.set(overrideKey(weekIdx,d),JSON.stringify(ov))
+        ]);
+      }));
       for(const op of pendingScopes){
         for(let wi=op.startWi;wi<=op.endWi;wi++){
           if(wi===weekIdx) continue;
@@ -1003,7 +986,6 @@ function App(){
   const weekPct=Math.round(DAYS.reduce((s,d)=>s+dayPct(d),0)/DAYS.length);
   const totalWeekTasks=DAYS.reduce((s,d)=>s+getDayTasks(d).length,0);
   const completedWeekTasks=DAYS.reduce((s,d)=>s+(checked[d]?.size||0),0);
-  const daysCompleted=DAYS.filter(d=>dayPct(d)===100).length;
   const taskGroups=(()=>{
     if(sortBy==="category"){
       const g={};
@@ -1129,7 +1111,8 @@ function App(){
             <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
             <button className="bh" onClick={()=>{setSettingsMenuOpen(false);setModal("export");}} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.65)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}><IconDownload/>Export</button>
             {(checked[activeDay]?.size||0)>0&&<><div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
-            <button className="bh" onClick={async()=>{setSettingsMenuOpen(false);setChecked(p=>({...p,[activeDay]:new Set()}));setSyncStatus("saving");try{await store.set(checkedKey(weekIdx,activeDay),"[]");setSyncStatus("idle");}catch{setSyncStatus("error");}}} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(239,68,68,0.7)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}><IconReset/>Reset Day</button></>}
+            <button className="bh" onClick={async()=>{setSettingsMenuOpen(false);setChecked(p=>({...p,[activeDay]:new Set()}));setSyncStatus("saving");try{await store.set(checkedKey(weekIdx,activeDay),"[]");setSyncStatus("idle");}catch{setSyncStatus("error");setDirty(true);}}}
+ style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(239,68,68,0.7)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}><IconReset/>Reset Day</button></>}
             <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
             <button className="bh" onClick={()=>{setSettingsMenuOpen(false);localStorage.removeItem(AUTH_KEY);location.reload();}} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}><IconLock/>Lock</button>
           </div>}
