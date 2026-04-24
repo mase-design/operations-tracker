@@ -682,6 +682,8 @@ function App(){
   const [pendingOverrideOps,setPendingOverrideOps]=useState([]);
   const [view,setView]=useState("day");
   const [sortBy,setSortBy]=useState("time");
+  const [addMenuOpen,setAddMenuOpen]=useState(false);
+  const [settingsMenuOpen,setSettingsMenuOpen]=useState(false);
   const todayDay=getTodayDayName();
   const isCurrentWeek=weekIdx===getCurrentWeekIdx();
   const omKey=(wi,d)=>`${wi}_${d}`;
@@ -1029,75 +1031,100 @@ function App(){
             <SyncDot status={syncStatus} dirty={dirty}/>
           </div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
-          <ProgressRing pct={weekPct} size={72} stroke={5} color="#60A5FA" label="WEEK AVG"/>
-          <button className="bh" onClick={()=>{localStorage.removeItem(AUTH_KEY);location.reload();}} style={{padding:"4px 10px",borderRadius:7,background:"transparent",border:"1px solid rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:600,fontSize:10,cursor:"pointer"}}>Lock</button>
+        <ProgressRing pct={weekPct} size={68} stroke={5} color="#60A5FA" label="WEEK AVG"/>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:14,marginTop:14,flexWrap:"wrap"}}>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.45)"}}><span style={{color:"#60A5FA",fontWeight:700}}>{completedWeekTasks}</span><span style={{color:"rgba(255,255,255,0.25)"}}> / {totalWeekTasks} done</span></span>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.2)"}}>·</span>
+        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:weekPct===100?"#34D399":"#A78BFA",fontWeight:700}}>{weekPct}%</span>
+        {isCurrentWeek&&DAYS.includes(todayDay)&&<><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.2)"}}>·</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.45)"}}>Today <span style={{color:"#34D399",fontWeight:700}}>{dayPct(todayDay)}%</span></span></>}
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10}}>
+        <button className="bh" onClick={()=>setWeekIdx(i=>Math.max(0,i-1))} disabled={weekIdx===0} style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:weekIdx===0?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.4)",cursor:weekIdx===0?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,lineHeight:1}}>‹</button>
+        <div style={{flex:1,textAlign:"center"}}>
+          <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"#93C5FD",display:"inline-flex",alignItems:"center",gap:6}}>
+            {isCurrentWeek&&<span style={{width:6,height:6,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite",display:"inline-block",flexShrink:0}}/>}
+            Week of {ALL_WEEKS[weekIdx]?.label}
+          </span>
         </div>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:22}}>
-        {[
-          {label:"TASKS DONE",value:`${completedWeekTasks}`,sub:`of ${totalWeekTasks} this week`,color:"#60A5FA",icon:"✅"},
-          {label:"WEEK PROGRESS",value:`${weekPct}%`,sub:`${daysCompleted} of 5 days complete`,color:weekPct===100?"#34D399":"#A78BFA",icon:"📈"},
-          {label:"TODAY",value:isCurrentWeek&&DAYS.includes(todayDay)?`${dayPct(todayDay)}%`:"—",sub:isCurrentWeek&&DAYS.includes(todayDay)?`${checked[todayDay]?.size||0}/${getDayTasks(todayDay).length} tasks`:"off day",color:"#34D399",icon:"🎯"},
-        ].map(c=>(
-          <div key={c.label} style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 16px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em"}}>{c.label}</div>
-              <span style={{fontSize:14}}>{c.icon}</span>
-            </div>
-            <div style={{fontFamily:"Outfit",fontWeight:800,fontSize:26,color:c.color,letterSpacing:"-0.03em",lineHeight:1}}>{c.value}</div>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.28)",marginTop:4}}>{c.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{display:"flex",gap:5,marginTop:16,overflowX:"auto",paddingBottom:3}}>
-        {ALL_WEEKS.map((w,i)=>{
-          const isCur=getCurrentWeekIdx()===i,isSel=i===weekIdx;
-          return <button key={i} className="bh" onClick={()=>setWeekIdx(i)} style={{padding:"5px 12px",borderRadius:99,flexShrink:0,border:`1px solid ${isSel?"rgba(96,165,250,0.5)":"rgba(255,255,255,0.07)"}`,background:isSel?"rgba(96,165,250,0.12)":"transparent",color:isSel?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"'JetBrains Mono',monospace",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-            {isCur&&<span style={{width:6,height:6,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
-            {w.label}
-          </button>;
-        })}
+        <button className="bh" onClick={()=>setWeekIdx(i=>Math.min(ALL_WEEKS.length-1,i+1))} disabled={weekIdx===ALL_WEEKS.length-1} style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:weekIdx===ALL_WEEKS.length-1?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.4)",cursor:weekIdx===ALL_WEEKS.length-1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,lineHeight:1}}>›</button>
       </div>
     </div>
 
-    <div style={{maxWidth:900,margin:"18px auto 0",padding:"0 20px"}}>
-      <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
-        {[["day","Day View"],["week","Week Overview"]].map(([v,l])=>(
-          <button key={v} className="bh" onClick={()=>setView(v)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${view===v?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.07)"}`,background:view===v?"rgba(96,165,250,0.1)":"transparent",color:view===v?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>{l}</button>
-        ))}
-        <div style={{flex:1}}/>
-        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.08)",color:syncStatus!=="idle"?"rgba(255,255,255,0.25)":"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
-          {syncStatus==="loading"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
-          🔄 Refresh
-        </button>
-        <button className="bh" onClick={handleSave} disabled={!dirty||syncStatus!=="idle"} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${dirty&&syncStatus==="idle"?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.05)"}`,background:dirty&&syncStatus==="idle"?"rgba(52,211,153,0.08)":"transparent",color:dirty&&syncStatus==="idle"?"#34D399":"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:dirty&&syncStatus==="idle"?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:4}}>
-          {syncStatus==="saving"&&<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#A78BFA",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>}
-          💾 Save
-        </button>
-        <button className="bh" onClick={()=>setModal("weeks")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>📅 Weeks</button>
-        <button className="bh" onClick={()=>setModal("slots")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.07)",background:"transparent",color:"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⏱ Slots</button>
-      </div>
-
-      <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:4}}>
+    <div style={{maxWidth:900,margin:"14px auto 0",padding:"0 20px"}}>
+      <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:4,alignItems:"stretch"}}>
+        <div style={{display:"flex",gap:2,padding:2,background:"rgba(255,255,255,0.03)",borderRadius:10,flexShrink:0,alignSelf:"center"}}>
+          {[["day","Day"],["week","Week"]].map(([v,l])=>(
+            <button key={v} className="bh" onClick={()=>setView(v)} style={{padding:"7px 11px",borderRadius:8,border:"none",cursor:"pointer",background:view===v?"rgba(96,165,250,0.18)":"transparent",color:view===v?"#93C5FD":"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:700,fontSize:12,outline:view===v?"1px solid rgba(96,165,250,0.25)":"none"}}>{l}</button>
+          ))}
+        </div>
+        <div style={{width:1,background:"rgba(255,255,255,0.06)",margin:"6px 2px"}}/>
         {DAYS.map(d=>{
           const pct=dayPct(d),isToday=isCurrentWeek&&d===todayDay,isActive=d===activeDay;
           const ov2=getOv(weekIdx,d);
           const hasOv=((ov2.removed||[]).length>0||(ov2.added||[]).length>0||Object.keys(ov2.slotOverrides||{}).length>0);
-          return <button key={d} className="bh" onClick={()=>{setActiveDay(d);setView("day");}} style={{flex:1,padding:"10px 4px 8px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?"rgba(96,165,250,0.12)":"transparent",outline:isActive?"1px solid rgba(96,165,250,0.25)":"none",opacity:isActive?1:0.45,position:"relative"}}>
-            {hasOv&&<span style={{position:"absolute",top:6,right:8,width:5,height:5,borderRadius:"50%",background:"#FB923C"}}/>}
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                {isToday&&<span style={{width:6,height:6,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
-                <span style={{fontFamily:"Outfit",fontWeight:700,fontSize:13,color:isActive?"#93C5FD":"#CCC"}}>{d}</span>
+          return <button key={d} className="bh" onClick={()=>{setActiveDay(d);setView("day");}} style={{flex:1,padding:"8px 4px 7px",borderRadius:10,border:"none",cursor:"pointer",background:isActive?"rgba(96,165,250,0.12)":"transparent",outline:isActive?"1px solid rgba(96,165,250,0.25)":"none",opacity:isActive?1:0.5,position:"relative"}}>
+            {hasOv&&<span style={{position:"absolute",top:5,right:7,width:5,height:5,borderRadius:"50%",background:"#FB923C"}}/>}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:3}}>
+                {isToday&&<span style={{width:5,height:5,borderRadius:"50%",background:"#34D399",animation:"pulse 2s infinite"}}/>}
+                <span style={{fontFamily:"Outfit",fontWeight:700,fontSize:12,color:isActive?"#93C5FD":"#CCC"}}>{d}</span>
               </div>
-              <ProgressBar pct={pct} height={3}/>
-              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:pct===100?"#34D399":"rgba(255,255,255,0.28)"}}>{pct}%</span>
+              <ProgressBar pct={pct} height={2.5}/>
+              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:pct===100?"#34D399":"rgba(255,255,255,0.28)"}}>{pct}%</span>
             </div>
           </button>;
         })}
+      </div>
+
+      <div style={{display:"flex",gap:6,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{position:"relative"}}>
+          {addMenuOpen&&<div style={{position:"fixed",inset:0,zIndex:5}} onClick={()=>setAddMenuOpen(false)}/>}
+          <button className="bh" onClick={()=>setAddMenuOpen(p=>!p)} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"rgba(255,255,255,0.7)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>+ Add <span style={{fontSize:9,opacity:0.6,marginLeft:2}}>▾</span></button>
+          {addMenuOpen&&<div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:10,background:"#111420",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,boxShadow:"0 16px 40px rgba(0,0,0,0.6)",overflow:"hidden",minWidth:150}}>
+            <button className="bh" onClick={()=>{setAddMenuOpen(false);setModal("newDayTask");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>+ Today Only</button>
+            <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
+            <button className="bh" onClick={()=>{setAddMenuOpen(false);setModal("newTask");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>+ Repeating</button>
+          </div>}
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,overflow:"hidden"}}>
+          <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)",letterSpacing:"0.06em",padding:"0 6px 0 10px",pointerEvents:"none",userSelect:"none"}}>SORT</span>
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"6px 4px 6px 0",border:"none",background:"transparent",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",outline:"none",appearance:"none",WebkitAppearance:"none"}}>
+            {[["time","Time"],["category","Category"],["label","Label"],["status","Status"]].map(([v,l])=>(
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+          <span style={{color:"rgba(255,255,255,0.3)",fontSize:9,paddingRight:8,pointerEvents:"none"}}>▾</span>
+        </div>
+
+        <div style={{flex:1}}/>
+
+        <button className="bh" onClick={()=>setModal("export")} style={{padding:"6px 11px",borderRadius:8,border:"1px solid rgba(96,165,250,0.2)",background:"rgba(96,165,250,0.06)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>↓ Export</button>
+
+        <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} title="Refresh" style={{width:32,height:32,borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.06)",color:syncStatus!=="idle"?"rgba(255,255,255,0.2)":"#93C5FD",cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
+          {syncStatus==="loading"?<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>:"🔄"}
+        </button>
+
+        <button className="bh" onClick={handleSave} disabled={!dirty||syncStatus!=="idle"} title="Save" style={{width:32,height:32,borderRadius:8,border:`1px solid ${dirty&&syncStatus==="idle"?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.05)"}`,background:dirty&&syncStatus==="idle"?"rgba(52,211,153,0.08)":"transparent",color:dirty&&syncStatus==="idle"?"#34D399":"rgba(255,255,255,0.2)",cursor:dirty&&syncStatus==="idle"?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
+          {syncStatus==="saving"?<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#A78BFA",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>:"💾"}
+        </button>
+
+        <div style={{position:"relative"}}>
+          {settingsMenuOpen&&<div style={{position:"fixed",inset:0,zIndex:5}} onClick={()=>setSettingsMenuOpen(false)}/>}
+          <button className="bh" onClick={()=>setSettingsMenuOpen(p=>!p)} title="Settings" style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"rgba(255,255,255,0.5)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>⚙</button>
+          {settingsMenuOpen&&<div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:10,background:"#111420",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,boxShadow:"0 16px 40px rgba(0,0,0,0.6)",overflow:"hidden",minWidth:145}}>
+            <button className="bh" onClick={()=>{setSettingsMenuOpen(false);setModal("weeks");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.65)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>📅 Weeks</button>
+            <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
+            <button className="bh" onClick={()=>{setSettingsMenuOpen(false);setModal("slots");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.65)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>⏱ Slots</button>
+            {(checked[activeDay]?.size||0)>0&&<><div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
+            <button className="bh" onClick={async()=>{setSettingsMenuOpen(false);setChecked(p=>({...p,[activeDay]:new Set()}));setSyncStatus("saving");try{await store.set(checkedKey(weekIdx,activeDay),"[]");setSyncStatus("idle");}catch{setSyncStatus("error");}}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(239,68,68,0.7)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>✕ Reset Day</button></>}
+            <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
+            <button className="bh" onClick={()=>{setSettingsMenuOpen(false);localStorage.removeItem(AUTH_KEY);location.reload();}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.35)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>🔒 Lock</button>
+          </div>}
+        </div>
       </div>
     </div>
 
@@ -1122,27 +1149,12 @@ function App(){
 
     {view==="day"&&(
       <div style={{maxWidth:900,margin:"18px auto 0",padding:"0 20px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontWeight:800,fontSize:22,letterSpacing:"-0.025em"}}>{DAY_FULL[activeDay]}</span>
-            {isCurrentWeek&&activeDay===todayDay&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#34D399",background:"#34D39918",padding:"2px 9px",borderRadius:99}}>TODAY</span>}
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"rgba(255,255,255,0.3)"}}>{checked[activeDay]?.size||0}/{activeTasks.length}</span>
-            <button className="bh" onClick={()=>setModal("newDayTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.22)",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Today Only</button>
-            <button className="bh" onClick={()=>setModal("newTask")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.22)",color:"#34D399",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>+ Repeating</button>
-            <button className="bh" onClick={()=>setModal("export")} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.22)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>⬇ Export</button>
-            {(checked[activeDay]?.size||0)>0&&<button className="bh" onClick={async()=>{setChecked(p=>({...p,[activeDay]:new Set()}));setSyncStatus("saving");try{await store.set(checkedKey(weekIdx,activeDay),"[]");setSyncStatus("idle");}catch{setSyncStatus("error");}}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.25)",fontFamily:"Outfit",fontWeight:500,fontSize:12,cursor:"pointer"}}>Reset</button>}
-          </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <span style={{fontWeight:800,fontSize:22,letterSpacing:"-0.025em"}}>{DAY_FULL[activeDay]}</span>
+          {isCurrentWeek&&activeDay===todayDay&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"#34D399",background:"#34D39918",padding:"2px 9px",borderRadius:99}}>TODAY</span>}
+          <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"rgba(255,255,255,0.3)",marginLeft:"auto"}}>{checked[activeDay]?.size||0}/{activeTasks.length}</span>
         </div>
         <ProgressBar pct={activePct} height={6}/>
-
-        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,flexWrap:"wrap"}}>
-          <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)",letterSpacing:"0.08em"}}>SORT</span>
-          {[["time","Time"],["category","Category"],["label","Label"],["status","Status"]].map(([v,l])=>(
-            <button key={v} className="bh" onClick={()=>setSortBy(v)} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${sortBy===v?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.07)"}`,background:sortBy===v?"rgba(96,165,250,0.1)":"transparent",color:sortBy===v?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:11,cursor:"pointer"}}>{l}</button>
-          ))}
-        </div>
 
         {loading?<div style={{textAlign:"center",padding:"48px 0",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)"}}>Loading from cloud…</div>
         :activeTasks.length===0?<div style={{textAlign:"center",padding:"48px 0"}}>
