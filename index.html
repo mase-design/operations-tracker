@@ -681,6 +681,7 @@ function App(){
   const [pendingScopes,setPendingScopes]=useState([]);
   const [pendingOverrideOps,setPendingOverrideOps]=useState([]);
   const [view,setView]=useState("day");
+  const [sortBy,setSortBy]=useState("time");
   const todayDay=getTodayDayName();
   const isCurrentWeek=weekIdx===getCurrentWeekIdx();
   const omKey=(wi,d)=>`${wi}_${d}`;
@@ -993,7 +994,24 @@ function App(){
   const totalWeekTasks=DAYS.reduce((s,d)=>s+getDayTasks(d).length,0);
   const completedWeekTasks=DAYS.reduce((s,d)=>s+(checked[d]?.size||0),0);
   const daysCompleted=DAYS.filter(d=>dayPct(d)===100).length;
-  const timeGroups=(()=>{const g={};activeTasks.forEach(t=>{(g[t.time]||(g[t.time]=[])).push(t);});return Object.entries(g).sort(([a],[b])=>timeSlots.indexOf(a)-timeSlots.indexOf(b));})();
+  const taskGroups=(()=>{
+    if(sortBy==="category"){
+      const g={};
+      activeTasks.forEach(t=>{const k=CATEGORY_META[t.category]?.label||t.category;(g[k]||(g[k]=[])).push(t);});
+      return Object.entries(g).sort(([a],[b])=>a.localeCompare(b));
+    }
+    if(sortBy==="label"){
+      return [["A – Z",[...activeTasks].sort((a,b)=>a.label.localeCompare(b.label))]];
+    }
+    if(sortBy==="status"){
+      const incomplete=activeTasks.filter(t=>!checked[activeDay]?.has(t.id));
+      const complete=activeTasks.filter(t=>checked[activeDay]?.has(t.id));
+      return [...(incomplete.length?[["Incomplete",incomplete]]:[]),(complete.length?["Complete ✓",complete]:null)].filter(Boolean);
+    }
+    // default: time
+    const g={};activeTasks.forEach(t=>{(g[t.time]||(g[t.time]=[])).push(t);});
+    return Object.entries(g).sort(([a],[b])=>timeSlots.indexOf(a)-timeSlots.indexOf(b));
+  })();
   const activePct=dayPct(activeDay);
   const isDayOnlyAdded=t=>(ov.added||[]).some(x=>x.id===t.id);
 
@@ -1119,13 +1137,20 @@ function App(){
         </div>
         <ProgressBar pct={activePct} height={6}/>
 
+        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,flexWrap:"wrap"}}>
+          <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9.5,color:"rgba(255,255,255,0.3)",letterSpacing:"0.08em"}}>SORT</span>
+          {[["time","Time"],["category","Category"],["label","Label"],["status","Status"]].map(([v,l])=>(
+            <button key={v} className="bh" onClick={()=>setSortBy(v)} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${sortBy===v?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.07)"}`,background:sortBy===v?"rgba(96,165,250,0.1)":"transparent",color:sortBy===v?"#93C5FD":"rgba(255,255,255,0.32)",fontFamily:"Outfit",fontWeight:600,fontSize:11,cursor:"pointer"}}>{l}</button>
+          ))}
+        </div>
+
         {loading?<div style={{textAlign:"center",padding:"48px 0",fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)"}}>Loading from cloud…</div>
         :activeTasks.length===0?<div style={{textAlign:"center",padding:"48px 0"}}>
             <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:"rgba(255,255,255,0.2)",marginBottom:12}}>No tasks for {DAY_FULL[activeDay]}</div>
             <button onClick={()=>setModal("newDayTask")} style={{padding:"8px 18px",borderRadius:9,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.22)",color:"#FB923C",fontFamily:"Outfit",fontWeight:600,fontSize:13,cursor:"pointer"}}>+ Add task for today</button>
           </div>
         :<div style={{display:"flex",flexDirection:"column",gap:10,marginTop:14}}>
-          {timeGroups.map(([time,tasks])=>{
+          {taskGroups.map(([time,tasks])=>{
             const allDone=tasks.every(t=>checked[activeDay]?.has(t.id));
             return <div key={time} style={{borderRadius:13,overflow:"hidden",border:`1px solid ${allDone?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.06)"}`}}>
               <div style={{padding:"6px 14px",background:allDone?"rgba(52,211,153,0.06)":"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.04)",display:"flex",alignItems:"center",gap:8}}>
