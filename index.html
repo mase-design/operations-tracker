@@ -299,7 +299,7 @@ function ProgressBar({pct,color="#60A5FA",height=5}){
     <div style={{width:`${pct}%`,height:"100%",background:pct===100?"linear-gradient(90deg,#059669,#34D399)":`linear-gradient(90deg,${color}bb,${color})`,borderRadius:99,transition:"width 0.5s"}}/>
   </div>;
 }
-function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label}){
+function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label,value}){
   const r=(size-stroke)/2,circ=2*Math.PI*r;
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -308,7 +308,7 @@ function ProgressRing({pct,size=72,stroke=5,color="#60A5FA",label}){
         strokeDasharray={circ} strokeDashoffset={circ*(1-pct/100)} strokeLinecap="round"
         transform={`rotate(-90 ${size/2} ${size/2})`} style={{transition:"stroke-dashoffset 0.6s"}}/>
       <text x={size/2} y={size/2+5} textAnchor="middle" fill={pct===100?"#34D399":"#F0F0F0"}
-        fontSize="13" fontFamily="Outfit" fontWeight="700">{pct}%</text>
+        fontSize="13" fontFamily="Outfit" fontWeight="700">{value!==undefined?value:`${pct}%`}</text>
     </svg>
     {label&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em"}}>{label}</div>}
   </div>;
@@ -1031,14 +1031,13 @@ function App(){
             <SyncDot status={syncStatus} dirty={dirty}/>
           </div>
         </div>
-        <ProgressRing pct={weekPct} size={68} stroke={5} color="#60A5FA" label="WEEK AVG"/>
-      </div>
-
-      <div style={{display:"flex",alignItems:"center",gap:14,marginTop:14,flexWrap:"wrap"}}>
-        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.45)"}}><span style={{color:"#60A5FA",fontWeight:700}}>{completedWeekTasks}</span><span style={{color:"rgba(255,255,255,0.25)"}}> / {totalWeekTasks} done</span></span>
-        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.2)"}}>·</span>
-        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:weekPct===100?"#34D399":"#A78BFA",fontWeight:700}}>{weekPct}%</span>
-        {isCurrentWeek&&DAYS.includes(todayDay)&&<><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.2)"}}>·</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"rgba(255,255,255,0.45)"}}>Today <span style={{color:"#34D399",fontWeight:700}}>{dayPct(todayDay)}%</span></span></>}
+        <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
+          <ProgressRing pct={totalWeekTasks?Math.round(completedWeekTasks/totalWeekTasks*100):0} size={62} stroke={4} color="#60A5FA" label="TASKS" value={completedWeekTasks}/>
+          <ProgressRing pct={weekPct} size={62} stroke={4} color="#A78BFA" label="WEEK AVG"/>
+          {isCurrentWeek&&DAYS.includes(todayDay)
+            ?<ProgressRing pct={dayPct(todayDay)} size={62} stroke={4} color="#34D399" label="TODAY"/>
+            :<ProgressRing pct={0} size={62} stroke={4} color="#34D399" label="TODAY" value="—"/>}
+        </div>
       </div>
 
       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10}}>
@@ -1102,8 +1101,6 @@ function App(){
 
         <div style={{flex:1}}/>
 
-        <button className="bh" onClick={()=>setModal("export")} style={{padding:"6px 11px",borderRadius:8,border:"1px solid rgba(96,165,250,0.2)",background:"rgba(96,165,250,0.06)",color:"#93C5FD",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer"}}>↓ Export</button>
-
         <button className="bh" onClick={handleRefresh} disabled={syncStatus!=="idle"} title="Refresh" style={{width:32,height:32,borderRadius:8,border:`1px solid ${syncStatus!=="idle"?"rgba(255,255,255,0.05)":"rgba(96,165,250,0.2)"}`,background:syncStatus!=="idle"?"transparent":"rgba(96,165,250,0.06)",color:syncStatus!=="idle"?"rgba(255,255,255,0.2)":"#93C5FD",cursor:syncStatus!=="idle"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
           {syncStatus==="loading"?<span style={{width:10,height:10,border:"2px solid rgba(255,255,255,0.2)",borderTopColor:"#FCD34D",borderRadius:"50%",display:"inline-block",animation:"spin 0.6s linear infinite"}}/>:"🔄"}
         </button>
@@ -1119,6 +1116,8 @@ function App(){
             <button className="bh" onClick={()=>{setSettingsMenuOpen(false);setModal("weeks");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.65)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>📅 Weeks</button>
             <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
             <button className="bh" onClick={()=>{setSettingsMenuOpen(false);setModal("slots");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.65)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>⏱ Slots</button>
+            <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
+            <button className="bh" onClick={()=>{setSettingsMenuOpen(false);setModal("export");}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(255,255,255,0.65)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>↓ Export</button>
             {(checked[activeDay]?.size||0)>0&&<><div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
             <button className="bh" onClick={async()=>{setSettingsMenuOpen(false);setChecked(p=>({...p,[activeDay]:new Set()}));setSyncStatus("saving");try{await store.set(checkedKey(weekIdx,activeDay),"[]");setSyncStatus("idle");}catch{setSyncStatus("error");}}} style={{display:"block",width:"100%",padding:"9px 14px",border:"none",background:"transparent",color:"rgba(239,68,68,0.7)",fontFamily:"Outfit",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"left"}}>✕ Reset Day</button></>}
             <div style={{height:1,background:"rgba(255,255,255,0.05)"}}/>
